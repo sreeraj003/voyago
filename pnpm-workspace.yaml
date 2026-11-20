@@ -1,0 +1,14 @@
+packages:
+  - apps/*
+  - packages/*
+
+onlyBuiltDependencies:
+  - '@prisma/engines'
+  - prisma
+  - esbuild
+
+# One React version across the monorepo (Expo SDK 58 requires 19.3.0).
+# Duplicate React copies break hooks at runtime.
+overrides:
+  react: 19.3.0
+  react-dom: 19.3.0

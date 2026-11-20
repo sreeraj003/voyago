@@ -1,0 +1,46 @@
+{
+  "name": "@voyago/mobile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Voyago mobile app (React Native + Expo Router)",
+  "main": "expo-router/entry",
+  "scripts": {
+    "dev": "expo start",
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint app src",
+    "test": "jest",
+    "doctor": "expo install --check"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~58.0.17",
+    "@expo/vector-icons": "^15.0.2",
+    "@tanstack/react-query": "5.108.1",
+    "@voyago/shared": "workspace:*",
+    "expo": "~58.0.26",
+    "expo-constants": "~58.0.16",
+    "expo-linking": "~58.0.17",
+    "expo-router": "~58.0.32",
+    "expo-status-bar": "~58.0.5",
+    "expo-system-ui": "~58.0.7",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.1",
+    "react-native-safe-area-context": "~5.11.1",
+    "react-native-screens": "~4.30.1",
+    "react-native-web": "~0.21.4",
+    "zustand": "5.1.0"
+  },
+  "devDependencies": {
+    "@testing-library/react-native": "14.1.0",
+    "@types/jest": "30.0.0",
+    "@types/node": "22.20.5",
+    "@types/react": "19.3.0",
+    "jest": "30.5.2",
+    "jest-expo": "~58.0.15",
+    "typescript": "6.0.3"
+  }
+}

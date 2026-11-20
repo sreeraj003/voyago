@@ -1,0 +1,96 @@
+:root {
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --text: #16181d;
+  --muted: #5f6673;
+  --border: #e3e4e8;
+  --accent: #e2572b;
+  --ok: #1f8a4c;
+  --down: #c2362b;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --surface: #181b21;
+    --text: #eceef2;
+    --muted: #9aa1ad;
+    --border: #2a2e37;
+    --ok: #4cc27f;
+    --down: #ff7a6e;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+}
+
+.topbar {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.topbar a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.topbar a.active {
+  color: var(--accent);
+}
+
+.content {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 16px;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 20px;
+}
+
+.checks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.checks dt {
+  color: var(--muted);
+  text-transform: capitalize;
+}
+
+.checks dd {
+  margin: 4px 0 0;
+  font-weight: 600;
+}
+
+.status--ok,
+.status--up {
+  color: var(--ok);
+}
+
+.status--degraded,
+.status--down {
+  color: var(--down);
+}
+
+.muted {
+  color: var(--muted);
+}

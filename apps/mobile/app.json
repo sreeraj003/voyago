@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Voyago",
+    "slug": "voyago",
+    "scheme": "voyago",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.voyago.app"
+    },
+    "android": {
+      "package": "com.voyago.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

@@ -1,0 +1,13 @@
+// Voyago database schema.
+// Milestone 1 sets up the toolchain and enables PostGIS only.
+// Business tables are designed in milestone 2 (database design and migrations).
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}

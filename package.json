@@ -1,0 +1,37 @@
+{
+  "name": "voyago",
+  "private": true,
+  "description": "Voyago: social riding and travel platform (monorepo)",
+  "packageManager": "pnpm@10.28.0",
+  "engines": {
+    "node": ">=22.12.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel --filter=@voyago/api --filter=@voyago/admin",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "test:e2e": "turbo run test:e2e",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm test",
+    "services:up": "docker compose -f infra/docker/docker-compose.yml --env-file infra/docker/.env up -d --wait",
+    "services:down": "docker compose -f infra/docker/docker-compose.yml --env-file infra/docker/.env down",
+    "db:migrate": "pnpm --filter @voyago/api prisma:migrate:deploy"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "eslint": "10.15.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "globals": "17.14.0",
+    "prettier": "3.10.1",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "turbo": "2.11.13",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.73.0"
+  }
+}
