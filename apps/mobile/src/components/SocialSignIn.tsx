@@ -14,10 +14,11 @@ import { Button, FormMessage } from './Form';
 WebBrowser.maybeCompleteAuthSession();
 
 /** Public OAuth client ids (not secrets), from the app's env. Add the same ids to the API's GOOGLE_CLIENT_IDS. */
+const envText = (value: unknown): string => (typeof value === 'string' ? value.trim() : '');
 const googleIds = {
-  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '',
-  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? '',
-  androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ?? '',
+  webClientId: envText(process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID),
+  iosClientId: envText(process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID),
+  androidClientId: envText(process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID),
 };
 const googleIdForPlatform =
   Platform.OS === 'ios'
