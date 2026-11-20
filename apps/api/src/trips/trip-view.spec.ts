@@ -51,6 +51,7 @@ describe('allowedActions', () => {
       'manage_people',
       'cancel',
       'chat',
+      'safety',
     ]);
     expect(allowedActions(trip({ status: 'IN_PROGRESS' }), organiser)).toEqual([
       'edit',
@@ -58,6 +59,7 @@ describe('allowedActions', () => {
       'manage_people',
       'cancel',
       'chat',
+      'safety',
     ]);
     // The chat stays open after a trip ends, so people can say goodbye or share photos.
     expect(allowedActions(trip({ status: 'CANCELLED' }), organiser)).toEqual(['chat']);
@@ -98,6 +100,29 @@ describe('allowedActions', () => {
         participantStatus: 'COMPLETED',
       }),
     ).toEqual(['chat']);
+    // Safety tools: on the trip and live, or completed less than a day ago.
+    const completed = { ...none, participantStatus: 'COMPLETED' as const };
+    expect(
+      allowedActions(
+        trip({ status: 'COMPLETED', completedAt: new Date(Date.now() - HOUR) }),
+        member,
+        completed,
+      ),
+    ).toEqual(['chat', 'safety']);
+    expect(
+      allowedActions(
+        trip({ status: 'COMPLETED', completedAt: new Date(Date.now() - 25 * HOUR) }),
+        member,
+        completed,
+      ),
+    ).toEqual(['chat']);
+    expect(
+      allowedActions(trip({ status: 'IN_PROGRESS' }), member, {
+        ...none,
+        participantStatus: 'ACTIVE',
+      }),
+    ).toEqual(['leave', 'chat', 'safety']);
+    expect(allowedActions(trip({ status: 'IN_PROGRESS' }), member)).not.toContain('safety');
     expect(allowedActions(trip(), member, { ...none, participantStatus: 'LEFT' })).toEqual([
       'join',
     ]);

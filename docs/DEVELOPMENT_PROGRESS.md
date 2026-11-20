@@ -15,12 +15,86 @@ verified before the next starts.
 | 08  | Communities and social graph                | Done        |
 | 09  | Chat and notifications                      | Done        |
 | 10  | Admin dashboard and moderation              | Done        |
-| 11  | Live location and safety workflows          | Not started |
+| 11  | Live location and safety workflows          | Done        |
 | 12  | Commercial operators and packages           | Not started |
 | 13  | Bookings, payments, commissions and refunds | Not started |
 | 14  | Subscriptions and monetisation              | Not started |
 | 15  | Analytics, observability and operations     | Not started |
 | 16  | Security, testing, launch readiness, deploy | Not started |
+
+---
+
+## Milestone 11: Live location and safety workflows (2026-11-20)
+
+### Implemented
+
+- **Live location, opt-in per trip:** a member on the trip (organiser included) chooses to share
+  for 1, 4, 12 or 24 hours after reading what it means and agreeing (`consent: true` is required
+  by the API). Only from two hours before departure until the trip ends. Only the trip's active
+  members see it, and people who blocked each other don't see each other. No public endpoint, and
+  never on profiles or in discovery. Sharing stops on Stop, on "Arrived safely", at the chosen
+  time, when the trip ends, when the member leaves or is removed, or when the account is
+  suspended; the last position is deleted then. Positions are kept only in Redis (no history).
+- **No background tracking:** the app sends the position only while the safety screen is open and
+  the app is in front (every 10 seconds or 20 metres), over the socket with a REST fallback. It
+  shows when it is paused and when someone's position is out of date (over 2 minutes old).
+- **Server checks on every reading and read:** membership, an active unexpired session, the trip's
+  live window, one reading per 3 seconds per member; readings over 2 minutes old or older than the
+  last one are ignored, future ones refused. A 30-second sweep ends sessions that expired, whose
+  trip ended or member left, or whose account was suspended.
+- **Check-ins:** "I'm at the start", "All good", "Arrived safely", while the trip is live and for a
+  day after it is completed.
+- **SOS:** confirmed in the app first ("Send an SOS to this trip?"), with an optional message and
+  the phone's current position (or the last shared one). The trip's members are notified in the
+  app, by push when it is set up, and live on the safety screen; the member's emergency contacts
+  are texted with the trip, a map link and "call 112", when an SMS provider is configured (with
+  MSG91, an approved SOS template is also needed). One active SOS per member and trip, at most 3
+  an hour. The member closes it ("I'm safe" or "False alarm"), or the organiser marks them safe;
+  the stored location is then cleared and contacts who were texted hear it is over (Twilio).
+  Raising and closing are audited. The app always shows "Call 112" and says Voyago does not
+  contact the police or an ambulance.
+- **Emergency contacts:** up to three, private to the member (Profile, "Emergency contacts").
+- **Trip screen:** a "Live location and safety" button for people on the trip during that window;
+  SOS notifications open the safety page.
+
+### Database changes
+
+Migration `20261123090000_live_location_safety`; see `docs/DATABASE.md` (including retention).
+
+### APIs
+
+`GET /trips/:id/safety`, `POST /trips/:id/location/share`, `POST /trips/:id/location/stop`,
+`POST /trips/:id/location`, `POST /trips/:id/check-ins`, `POST /trips/:id/sos`,
+`POST /sos/:id/resolve`, `GET/POST /me/emergency-contacts`, `DELETE /me/emergency-contacts/:id`;
+socket event `location:update` (client to server) and `location:update`, `location:stopped`,
+`sos:raised`, `sos:resolved` (server to client); trip action `safety`. See `docs/API.md`,
+"Live location and safety".
+
+### Tests
+
+- 19 new end-to-end tests (203 in total): consent and duration required; members only (404 for
+  others, REST and socket); readings reaching other members live and through the safety state,
+  with the Redis TTL bounded by the session; rate limit; stale, out-of-order and future readings;
+  socket updates with the same checks; blocked members hidden both ways; stopping (point deleted,
+  members told); expiry; leaving the trip and the trip ending; check-ins, with "Arrived safely"
+  stopping sharing; emergency contacts (limit, duplicates, privacy); SOS confirmation, member
+  notifications without blocked people, SMS to contacts, audit without coordinates, one active
+  alert, closing by the member or organiser only with the location cleared, last shared point
+  used, hourly limit; the day-after window; SOS locations cleared after a day.
+- Unit tests: the live window and safety inputs (shared), the MSG91 SOS template (API), the trip
+  `safety` action, and the app's live state merging, freshness labels and notification routing
+  (mobile, 43 in total).
+
+### Outstanding
+
+- Push alerts need `PUSH_PROVIDER=expo` and texts need an SMS provider (and, for MSG91, an approved
+  SOS template in `MSG91_SOS_TEMPLATE_ID`). Without them SOS still reaches members in the app and
+  the result says contacts were not texted.
+- The emergency number shown is 112 (India's single emergency number). Other countries' numbers
+  come with internationalisation.
+- Sharing pauses when the app goes to the background, by design. Background sharing would need
+  explicit "Always" permission and store review, and is not planned without a product decision.
+- Maps don't run in the web build; the safety page there lists each position with a map link.
 
 ---
 

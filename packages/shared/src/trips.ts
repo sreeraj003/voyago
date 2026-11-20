@@ -221,6 +221,8 @@ export const TripActionSchema = z.enum([
   'manage_people',
   /** Open the trip's group chat (people on the trip). */
   'chat',
+  /** Live location, check-ins and SOS: people on the trip during its live window. */
+  'safety',
 ]);
 export type TripAction = z.infer<typeof TripActionSchema>;
 

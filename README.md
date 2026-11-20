@@ -66,6 +66,7 @@ chosen provider is missing one of its keys, and says which one.
 | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Phone sign-in codes (Twilio)                    | `SMS_PROVIDER=twilio`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_FROM` or `TWILIO_MESSAGING_SERVICE_SID`                                                                             |
 | Phone sign-in codes (MSG91, India DLT)          | `SMS_PROVIDER=msg91`, `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_ID` (an approved OTP flow), `MSG91_OTP_VARIABLE` (default `otp`)                                                                          |
+| SOS texts to emergency contacts                 | Any SMS provider above; with MSG91 also `MSG91_SOS_TEMPLATE_ID` (a DLT flow with `name`, `trip`, `link`)                                                                                          |
 | Email (Resend)                                  | `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, `EMAIL_FROM` (a verified sender)                                                                                                                       |
 | Email (Postmark)                                | `EMAIL_PROVIDER=postmark`, `POSTMARK_SERVER_TOKEN`, `EMAIL_FROM`                                                                                                                                  |
 | Google sign-in                                  | `GOOGLE_CLIENT_IDS` (comma separated OAuth client ids), plus the same ids in the app (below)                                                                                                      |
@@ -138,4 +139,8 @@ pnpm --filter @voyago/mobile doctor         # check Expo package versions
 - Every database change is a Prisma migration.
 - Contact details and exact locations are never exposed publicly. Safety, blocking and reporting
   stay free.
+- Live location is opt-in per trip, visible only to the trip's members, sent only while the app is
+  open on the safety screen (no background tracking), and kept only in Redis until the session
+  ends. Voyago never claims to contact emergency services; SOS alerts the trip and the member's
+  own emergency contacts.
 - No paid passenger transport, driver matching or ride-hailing without legal review.

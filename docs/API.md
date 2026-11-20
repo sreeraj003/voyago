@@ -341,6 +341,41 @@ private community are always `COMMUNITY`. A post names its trip only if the trip
 Places are names, never coordinates; the app strips photo metadata before upload. The feed is
 plain reverse-chronological with no ranking; items carry `kind` (`post` or `trip`) and `at`.
 
+### Live location and safety
+
+| Method | Path                         | Auth   | Success | Description                                                                  |
+| ------ | ---------------------------- | ------ | ------- | ---------------------------------------------------------------------------- |
+| GET    | `/trips/:id/safety`          | Bearer | 200     | Sharers with latest points, my session, check-ins, alerts, `smsAvailable`.   |
+| POST   | `/trips/:id/location/share`  | Bearer | 201     | `{ durationMinutes (15–1440), consent: true }`. 409 outside the live window. |
+| POST   | `/trips/:id/location/stop`   | Bearer | 204     | Ends my session and deletes my last point.                                   |
+| POST   | `/trips/:id/location`        | Bearer | 200     | One reading; `{ accepted }`. 409 without a session, 429 under 3 s apart.     |
+| POST   | `/trips/:id/check-ins`       | Bearer | 201     | `AT_START`, `ALL_GOOD` or `ARRIVED_SAFELY` (stops sharing), optional note.   |
+| POST   | `/trips/:id/sos`             | Bearer | 201     | `{ confirm: true, message?, location? }`; returns who was told.              |
+| POST   | `/sos/:id/resolve`           | Bearer | 200     | `{ outcome: SAFE \| FALSE_ALARM }`; the raiser, or the organiser (SAFE).     |
+| GET    | `/me/emergency-contacts`     | Bearer | 200     | My contacts (private).                                                       |
+| POST   | `/me/emergency-contacts`     | Bearer | 201     | `{ name, phone (E.164), relationship? }`, at most 3; 409 for a duplicate.    |
+| DELETE | `/me/emergency-contacts/:id` | Bearer | 204     | Remove one.                                                                  |
+
+Everything under a trip is for its active members only (the organiser included, and members of a
+completed trip for check-ins and SOS); anyone else gets 404. People who blocked each other are
+left out of each other's sharers, check-ins, alerts and live events. The live window runs from two
+hours before departure until the trip is completed or cancelled (or a day after departure if it
+was never started); check-ins and SOS stay open for a day after completion. The trip's
+`viewer.actions` contains `safety` during that time.
+
+Readings: `latitude`, `longitude`, optional `accuracyMeters`, `heading`, `speedMps`, and
+`recordedAt` (device time). Readings more than 2 minutes old, or not newer than the last one, are
+ignored (`accepted: false`); readings in the future are refused (400). The same reading can be sent
+over the socket as `location:update` with `tripId`, answered through the acknowledgement. Members
+receive `location:update` (person, expiry and point), `location:stopped`, `sos:raised` and
+`sos:resolved` on their socket.
+
+SOS: one active alert per member and trip (409), at most 3 an hour (429). Members get a
+`SAFETY_ALERT` notification with `data: { tripId, screen: 'safety' }`. Emergency contacts are
+texted when SMS is available (`smsAvailable`), with the trip, a map link and the advice to call
+112; the response says how many were texted. Voyago does not contact emergency services, and the
+response carries `emergencyNumber` for the app to show. Closing an alert clears its location.
+
 ### Admin and moderation (`/api/v1/admin`)
 
 Staff only. Every route declares a permission and is checked on the server against the caller's

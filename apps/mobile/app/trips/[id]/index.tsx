@@ -230,6 +230,12 @@ function Membership({ trip }: { trip: Trip }) {
           onPress={() => router.push(`/trips/${trip.id}/invite`)}
         />
       ) : null}
+      {actions.has('safety') ? (
+        <Button
+          title="Live location and safety"
+          onPress={() => router.push(`/trips/${trip.id}/safety`)}
+        />
+      ) : null}
       {actions.has('chat') ? (
         <OpenChatButton title="Group chat" open={() => openTripChat(trip.id)} />
       ) : null}

@@ -60,6 +60,16 @@ export class RealtimeService {
       .emit(event, ...args);
   }
 
+  /** Emits to these members' own rooms only (every device they are connected on). */
+  emitToUsers<E extends keyof ServerToClientEvents>(
+    userIds: string[],
+    event: E,
+    ...args: Parameters<ServerToClientEvents[E]>
+  ): void {
+    if (!this.io || userIds.length === 0) return;
+    this.io.to(userIds.map(userRoom)).emit(event, ...args);
+  }
+
   /** Members with at least one socket open in the chat right now. */
   async onlineUserIds(conversationId: string): Promise<string[]> {
     if (!this.io) return [];

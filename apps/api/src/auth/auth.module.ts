@@ -34,6 +34,6 @@ import { TokenService } from './token.service.js';
     { provide: SOCIAL_KEY_RESOLVERS, useFactory: remoteKeyResolvers },
   ],
   // The global AuthGuard (registered in AppModule) needs these.
-  exports: [TokenService, SessionService, PasswordService],
+  exports: [TokenService, SessionService, PasswordService, SMS_SENDER],
 })
 export class AuthModule {}

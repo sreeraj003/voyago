@@ -187,5 +187,6 @@ function readData(value: unknown): AppNotification['data'] {
     const item = record[key];
     if (typeof item === 'string') data[key] = item;
   }
+  if (record.screen === 'safety') data.screen = 'safety';
   return data;
 }

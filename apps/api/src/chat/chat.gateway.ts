@@ -14,6 +14,7 @@ import {
   REALTIME_PATH,
   type SocketAck,
   SocketReadSchema,
+  SocketLocationUpdateSchema,
   SocketSendSchema,
   type ServerToClientEvents,
 } from '@voyago/shared';
@@ -26,6 +27,7 @@ import { TokenService } from '../auth/token.service.js';
 import { APP_CONFIG, type AppConfig } from '../config/app-config.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { RedisService } from '../redis/redis.service.js';
+import { SafetyService } from '../safety/safety.service.js';
 import { blockedIds } from '../social/blocks.js';
 import { ChatService } from './chat.service.js';
 import {
@@ -69,6 +71,7 @@ export class ChatGateway implements OnApplicationBootstrap, OnApplicationShutdow
     private readonly chat: ChatService,
     private readonly realtime: RealtimeService,
     private readonly redis: RedisService,
+    private readonly safety: SafetyService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -193,6 +196,15 @@ export class ChatGateway implements OnApplicationBootstrap, OnApplicationShutdow
       'message:read',
       this.handler(socket, SocketReadSchema, async ({ conversationId, messageId }) => {
         return this.chat.markRead(userId, conversationId, messageId);
+      }),
+    );
+
+    // Live location: the same checks as the REST route (membership, session, expiry, rate).
+    socket.on(
+      'location:update',
+      this.handler(socket, SocketLocationUpdateSchema, async ({ tripId, ...reading }) => {
+        await this.assertSession(socket);
+        return this.safety.update(userId, tripId, reading);
       }),
     );
 

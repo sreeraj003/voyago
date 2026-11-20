@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { UsernameSchema } from './auth.js';
 import { ChatPhotoIdSchema } from './maps-media.js';
 import { CursorPageQuerySchema, PageInfoSchema } from './pagination.js';
+import { type LocationServerEvents, type LocationUpdateInput } from './safety.js';
 
 /** Socket.IO path on the API host (the client connects to the API origin with this path). */
 export const REALTIME_PATH = '/api/v1/realtime';
@@ -116,7 +117,7 @@ export const SocketReadSchema = ConversationRefSchema.extend({ messageId: z.uuid
 export type SocketAck<T = unknown> =
   { ok: true; data: T } | { ok: false; error: { status: number; message: string } };
 
-export interface ServerToClientEvents {
+export interface ServerToClientEvents extends LocationServerEvents {
   'message:new': (message: ChatMessage) => void;
   'message:deleted': (event: { conversationId: string; messageId: string }) => void;
   'message:read': (event: { conversationId: string } & ReadState) => void;
@@ -143,6 +144,11 @@ export interface ClientToServerEvents {
   'message:read': (
     payload: { conversationId: string; messageId: string },
     ack?: (result: SocketAck) => void,
+  ) => void;
+  /** Live location while sharing (see safety.ts); answered like the other requests. */
+  'location:update': (
+    payload: { tripId: string } & LocationUpdateInput,
+    ack: (result: SocketAck<{ accepted: boolean }>) => void,
   ) => void;
   'typing:start': (payload: { conversationId: string }) => void;
   'typing:stop': (payload: { conversationId: string }) => void;

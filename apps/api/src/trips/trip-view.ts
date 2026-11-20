@@ -2,6 +2,7 @@ import {
   canTransition,
   type GeoPoint,
   hasPermission,
+  isTripLive,
   type JoinRequestStatus,
   type ParticipantStatus,
   type MotorcycleCategory,
@@ -124,6 +125,23 @@ export function hasStarted(trip: Pick<TripRecord, 'status' | 'departureAt'>, now
   return trip.status === 'IN_PROGRESS' || trip.departureAt.getTime() <= now;
 }
 
+/** Check-ins and SOS stay open this long after a trip is completed. */
+export const AFTER_TRIP_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** The trip's safety tools are open: it is live, or was completed less than a day ago. */
+export function isSafetyOpen(
+  trip: { status: string; departureAt: Date; completedAt: Date | null },
+  now = Date.now(),
+): boolean {
+  if (isTripLive(trip, now)) return true;
+  const completedAt = trip.completedAt?.getTime();
+  return (
+    trip.status === 'COMPLETED' &&
+    completedAt !== undefined &&
+    now - completedAt < AFTER_TRIP_WINDOW_MS
+  );
+}
+
 export function allowedActions(
   trip: TripRecord,
   user: AuthUser,
@@ -172,6 +190,8 @@ export function allowedActions(
   const onTrip =
     membership.participantStatus === 'ACTIVE' || membership.participantStatus === 'COMPLETED';
   if ((isOrganiser || onTrip) && trip.status !== 'DRAFT') actions.push('chat');
+  // Live location, check-ins and SOS: from two hours before departure until a day after.
+  if ((isOrganiser || onTrip) && isSafetyOpen(trip, now)) actions.push('safety');
   return actions;
 }
 

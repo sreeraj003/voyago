@@ -131,6 +131,42 @@ describe('real delivery providers', () => {
     ).rejects.toThrow('MSG91');
   });
 
+  it('texts SOS through its own MSG91 template, and only when one is set up', async () => {
+    const base = { ...config, SMS_PROVIDER: 'msg91' as const, MSG91_AUTH_KEY: 'k' };
+    const without = createSmsSender({ ...base, MSG91_TEMPLATE_ID: 't1' });
+    expect(without.sosEnabled).toBe(false);
+    expect(without.freeText).toBe(false);
+    await expect(without.send('+919876543210', 'x', { template: 'sos' })).rejects.toThrow(
+      'SOS template',
+    );
+    const { calls, fetchImpl } = recorder(200, { type: 'success' });
+    const sms = createSmsSender(
+      { ...base, MSG91_TEMPLATE_ID: 't1', MSG91_SOS_TEMPLATE_ID: 'sos1' },
+      fetchImpl,
+    );
+    expect(sms.sosEnabled).toBe(true);
+    await sms.send('+919876543210', 'ignored', {
+      template: 'sos',
+      name: 'Asha',
+      trip: 'Nandi Hills',
+      link: 'https://maps.google.com/?q=13.1,77.6',
+    });
+    expect(JSON.parse(calls[0]?.init.body ?? '')).toEqual({
+      template_id: 'sos1',
+      short_url: '0',
+      recipients: [
+        {
+          mobiles: '919876543210',
+          name: 'Asha',
+          trip: 'Nandi Hills',
+          link: 'https://maps.google.com/?q=13.1,77.6',
+        },
+      ],
+    });
+    // No provider: SOS still reaches members in the app, but nobody is texted.
+    expect(createSmsSender(config).sosEnabled).toBe(false);
+  });
+
   it('sends email through Resend or Postmark and reports failures', async () => {
     const resend = recorder();
     await createEmailSender(

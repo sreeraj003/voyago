@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   canTransition,
   CreateTripSchema,
+  isTripLive,
+  LocationUpdateSchema,
+  RaiseSosSchema,
+  StartSharingSchema,
   departureIssue,
   TRIP_TRANSITIONS,
   tripRuleIssues,
@@ -67,5 +71,36 @@ describe('trip rules', () => {
     expect(CreateTripSchema.safeParse(trip).success).toBe(true);
     expect(CreateTripSchema.safeParse({ ...trip, visibility: 'FOLLOWERS' }).success).toBe(false);
     expect(CreateTripSchema.safeParse({ ...trip, currency: 'USD' }).success).toBe(false);
+  });
+});
+
+describe('live window and safety inputs', () => {
+  const HOUR = 3_600_000;
+  const now = Date.parse('2026-11-20T10:00:00Z');
+  const at = (offset: number) => new Date(now + offset);
+
+  it('is live from two hours before departure until the trip ends or would expire', () => {
+    expect(isTripLive({ status: 'PUBLISHED', departureAt: at(3 * HOUR) }, now)).toBe(false);
+    expect(isTripLive({ status: 'PUBLISHED', departureAt: at(2 * HOUR) }, now)).toBe(true);
+    expect(isTripLive({ status: 'FULL', departureAt: at(-23 * HOUR) }, now)).toBe(true);
+    expect(isTripLive({ status: 'PUBLISHED', departureAt: at(-25 * HOUR) }, now)).toBe(false);
+    expect(isTripLive({ status: 'IN_PROGRESS', departureAt: at(-48 * HOUR) }, now)).toBe(true);
+    for (const status of ['DRAFT', 'COMPLETED', 'CANCELLED', 'EXPIRED']) {
+      expect(isTripLive({ status, departureAt: at(0) }, now)).toBe(false);
+    }
+  });
+
+  it('requires consent, a bounded duration, valid coordinates and SOS confirmation', () => {
+    expect(StartSharingSchema.safeParse({ durationMinutes: 60, consent: true }).success).toBe(true);
+    expect(StartSharingSchema.safeParse({ durationMinutes: 60 }).success).toBe(false);
+    expect(StartSharingSchema.safeParse({ durationMinutes: 1441, consent: true }).success).toBe(
+      false,
+    );
+    const reading = { latitude: 13, longitude: 77, recordedAt: at(0).toISOString() };
+    expect(LocationUpdateSchema.safeParse(reading).success).toBe(true);
+    expect(LocationUpdateSchema.safeParse({ ...reading, latitude: 95 }).success).toBe(false);
+    expect(LocationUpdateSchema.safeParse({ ...reading, longitude: -181 }).success).toBe(false);
+    expect(RaiseSosSchema.safeParse({ confirm: true }).success).toBe(true);
+    expect(RaiseSosSchema.safeParse({ confirm: false }).success).toBe(false);
   });
 });

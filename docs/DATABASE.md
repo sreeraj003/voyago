@@ -261,6 +261,39 @@ fixed id beginning `5eed0000`, so re-running changes nothing. The `dev_*` accoun
 - Route data (`trips.origin/destination`, `trip_stops`) is planning data only. Live location is a
   separate store (Redis, milestone 11) and never written to these tables.
 
+## Milestone 11 changes (`20261123090000_live_location_safety`)
+
+- `location_sessions` (from the initial schema) gains `end_reason` (`stopped`, `trip_ended`,
+  `left_trip`, `replaced`, `expired`, `suspended`; check `location_sessions_end_reason`). The
+  existing checks still apply: at most one active session per member and trip, and at most 24
+  hours long. Sessions hold metadata only (who, which trip, start, expiry, end).
+- **Coordinates are not stored in Postgres.** The latest reading of each sharing member lives in
+  Redis at `loc:{tripId}:{userId}` with a TTL equal to the session's remaining time, and is
+  deleted when sharing stops, the member arrives, leaves or is suspended, or the trip ends. No
+  history of positions is kept anywhere.
+- New `emergency_contacts` (owner, name, E.164 phone, optional relationship; unique per owner and
+  number; checks `emergency_contacts_phone_format` and `emergency_contacts_name_present`). At most
+  three per member (enforced by the API). Private to their owner; cascades with the user.
+- New `trip_check_ins` (`CheckInKind`: `AT_START`, `ALL_GOOD`, `ARRIVED_SAFELY`; optional note).
+  Cascades with the trip and the user.
+- New `sos_alerts` (`SosStatus`: `ACTIVE`, `RESOLVED`, `CANCELLED`): trip, member, message, the
+  last known location, how many members were notified and contacts texted, resolution time and
+  who resolved it. `sos_alerts_location_only_while_active`: the location is cleared when the
+  alert is closed; the safety sweep also clears it a day after the alert. Checks keep the point
+  complete and in range and the resolution time consistent; the partial unique index
+  `sos_alerts_one_active` allows one active alert per member and trip. Raising and closing an SOS
+  each write an `audit_logs` row (without coordinates).
+
+### Retention
+
+| Data                      | Kept                                                                 |
+| ------------------------- | -------------------------------------------------------------------- |
+| Live position (Redis)     | Until the session ends, at most 24 hours; deleted on stop or arrival |
+| Location session metadata | With the trip (no coordinates)                                       |
+| SOS location              | Until the alert is closed, at most 24 hours                          |
+| SOS alerts and check-ins  | With the trip; audit rows follow the audit log policy (milestone 15) |
+| Emergency contacts        | Until the member removes them or deletes their account               |
+
 ## Milestone 10 changes (`20261122090000_admin_moderation`)
 
 - `UserRole`: `ADMIN` is renamed `SUPER_ADMIN` (existing admins keep full access) and `SUPPORT`

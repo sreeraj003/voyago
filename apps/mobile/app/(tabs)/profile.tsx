@@ -52,6 +52,11 @@ export default function ProfileScreen() {
         onPress={() => router.push('/explore?tab=communities&mine=1')}
       />
       <PrivacySettings />
+      <Button
+        title="Emergency contacts"
+        variant="link"
+        onPress={() => router.push('/me/emergency-contacts')}
+      />
       <Button title="Blocked people" variant="link" onPress={() => router.push('/me/blocked')} />
       <Button title="Sign out" variant="secondary" onPress={() => void signOut()} />
     </Screen>

@@ -11,6 +11,7 @@ export function routeFor(data: Record<string, unknown>): Href | null {
   const communitySlug = text('communitySlug');
   const username = text('username');
   if (conversationId) return `/chats/${conversationId}`;
+  if (tripId && text('screen') === 'safety') return `/trips/${tripId}/safety`;
   if (tripId) return `/trips/${tripId}`;
   if (communitySlug) return `/communities/${communitySlug}`;
   if (username) return `/users/${username}`;

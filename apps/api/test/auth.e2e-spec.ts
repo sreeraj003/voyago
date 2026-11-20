@@ -434,15 +434,17 @@ describe('sign-in rate limit (e2e)', () => {
   });
 
   it('returns 429 after AUTH_RATE_LIMIT_MAX attempts per minute', async () => {
+    // A fresh address, so the per-account lockout from earlier runs can't answer first.
+    const email = `limit_${randomUUID().slice(0, 8)}@example.test`;
     for (let i = 0; i < 3; i++) {
       await request(app.getHttpServer())
         .post('/api/v1/auth/login')
-        .send({ email: 'limit@example.test', password: 'whatever-password' })
+        .send({ email, password: 'whatever-password' })
         .expect(401);
     }
     await request(app.getHttpServer())
       .post('/api/v1/auth/login')
-      .send({ email: 'limit@example.test', password: 'whatever-password' })
+      .send({ email, password: 'whatever-password' })
       .expect(429);
     // Other routes keep the general limit.
     await request(app.getHttpServer()).get('/api/v1/auth/methods').expect(200);

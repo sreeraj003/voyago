@@ -16,6 +16,7 @@ import { PrismaModule } from './database/prisma.module.js';
 import { HealthModule } from './health/health.module.js';
 import { IntegrationsModule } from './integrations/integrations.module.js';
 import { RedisModule } from './redis/redis.module.js';
+import { SafetyModule } from './safety/safety.module.js';
 import { SocialModule } from './social/social.module.js';
 import { CommunitiesModule } from './communities/communities.module.js';
 import { DiscoveryModule } from './discovery/discovery.module.js';
@@ -97,6 +98,7 @@ export class AppModule {
         CommunitiesModule,
         RealtimeModule,
         ChatModule,
+        SafetyModule,
         ...extraModules,
       ],
       providers: [

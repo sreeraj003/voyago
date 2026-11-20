@@ -9,11 +9,13 @@ export default function MeLayout() {
   return (
     <Stack
       screenOptions={{
-        title: 'Blocked people',
         headerStyle: { backgroundColor: colors.surface },
         headerTintColor: colors.text,
         contentStyle: { backgroundColor: colors.background },
       }}
-    />
+    >
+      <Stack.Screen name="blocked" options={{ title: 'Blocked people' }} />
+      <Stack.Screen name="emergency-contacts" options={{ title: 'Emergency contacts' }} />
+    </Stack>
   );
 }

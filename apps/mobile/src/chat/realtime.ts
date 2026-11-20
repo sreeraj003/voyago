@@ -57,7 +57,7 @@ useAuthStore.subscribe((state) => {
 /** Sends an event and waits for the server's answer (or a timeout). */
 export function request<T>(
   target: ChatSocket,
-  event: 'conversation:join' | 'message:send' | 'message:read',
+  event: 'conversation:join' | 'message:send' | 'message:read' | 'location:update',
   payload: object,
   timeoutMs = 8_000,
 ): Promise<SocketAck<T>> {

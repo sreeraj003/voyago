@@ -368,6 +368,18 @@ enum LocationSessionStatus {
   EXPIRED
 }
 
+enum CheckInKind {
+  AT_START
+  ALL_GOOD
+  ARRIVED_SAFELY
+}
+
+enum SosStatus {
+  ACTIVE
+  RESOLVED
+  CANCELLED
+}
+
 enum AuditActorType {
   USER
   ADMIN
@@ -442,6 +454,10 @@ model User {
   payments            Payment[]
   subscriptions       Subscription[]
   locationSessions    LocationSession[]
+  emergencyContacts   EmergencyContact[]
+  tripCheckIns        TripCheckIn[]
+  sosAlerts           SosAlert[]           @relation("SosRaiser")
+  resolvedSosAlerts   SosAlert[]           @relation("SosResolver")
   auditLogs           AuditLog[]
   sessions            AuthSession[]
   identities          AuthIdentity[]
@@ -671,6 +687,8 @@ model Trip {
   reviews           Review[]
   bookings          Booking[]
   locationSessions  LocationSession[]
+  checkIns          TripCheckIn[]
+  sosAlerts         SosAlert[]
 
   @@index([status, departureAt])
   @@index([mode, status, departureAt])
@@ -1024,6 +1042,8 @@ model LocationSession {
   startedAt DateTime              @default(now()) @map("started_at") @db.Timestamptz(3)
   expiresAt DateTime              @map("expires_at") @db.Timestamptz(3)
   endedAt   DateTime?             @map("ended_at") @db.Timestamptz(3)
+  /// Why sharing ended: stopped, trip_ended, left_trip, replaced, suspended.
+  endReason String?               @map("end_reason") @db.VarChar(20)
   createdAt DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -1034,6 +1054,63 @@ model LocationSession {
   @@index([userId, status])
   @@index([status, expiresAt])
   @@map("location_sessions")
+}
+
+/// People a member wants told if they raise an SOS. Private to the member; texted only on SOS.
+model EmergencyContact {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  name         String   @db.VarChar(80)
+  /// E.164. Never shown to anyone but the member.
+  phone        String   @db.VarChar(16)
+  relationship String?  @db.VarChar(40)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, phone])
+  @@map("emergency_contacts")
+}
+
+/// "I'm at the start", "All good", "Arrived safely". No coordinates are stored.
+model TripCheckIn {
+  id        String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tripId    String      @map("trip_id") @db.Uuid
+  userId    String      @map("user_id") @db.Uuid
+  kind      CheckInKind
+  note      String?     @db.VarChar(200)
+  createdAt DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tripId, createdAt(sort: Desc)])
+  @@map("trip_check_ins")
+}
+
+/// An SOS raised on a trip. The location is kept only while the alert is active.
+model SosAlert {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tripId             String    @map("trip_id") @db.Uuid
+  userId             String    @map("user_id") @db.Uuid
+  status             SosStatus @default(ACTIVE)
+  message            String?   @db.VarChar(300)
+  latitude           Float?
+  longitude          Float?
+  locationRecordedAt DateTime? @map("location_recorded_at") @db.Timestamptz(3)
+  membersNotified    Int       @default(0) @map("members_notified")
+  contactsTexted     Int       @default(0) @map("contacts_texted")
+  resolvedAt         DateTime? @map("resolved_at") @db.Timestamptz(3)
+  resolvedById       String?   @map("resolved_by_id") @db.Uuid
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  trip       Trip  @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user       User  @relation("SosRaiser", fields: [userId], references: [id], onDelete: Cascade)
+  resolvedBy User? @relation("SosResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  @@index([tripId, createdAt(sort: Desc)])
+  @@index([userId])
+  @@map("sos_alerts")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

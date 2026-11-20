@@ -131,6 +131,8 @@ export const NotificationSchema = z.object({
     communitySlug: z.string().optional(),
     username: z.string().optional(),
     conversationId: z.uuid().optional(),
+    /** Which screen of the trip to open (the safety page for SOS alerts). */
+    screen: z.enum(['safety']).optional(),
   }),
   readAt: z.string().nullable(),
   createdAt: z.string(),

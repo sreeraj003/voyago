@@ -67,6 +67,11 @@ export const EnvSchema = z
     /** The variable in that template that holds the code. */
     MSG91_OTP_VARIABLE: z.string().default('otp'),
     /**
+     * DLT-approved SOS template (flow) id, with variables `name`, `trip` and `link`. Without it,
+     * MSG91 cannot text emergency contacts (SOS still reaches the trip's members in the app).
+     */
+    MSG91_SOS_TEMPLATE_ID: z.string().default(''),
+    /**
      * `none`: no email is sent (verification and reset return 503). `dev`: as for SMS.
      * `resend` or `postmark`: real delivery with the keys below.
      */
