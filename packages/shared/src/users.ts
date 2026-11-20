@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { DisplayNameSchema, UsernameSchema } from './auth.js';
+import { FollowStateSchema } from './social.js';
 import { TripModeSchema } from './trip-mode.js';
 
 /**
@@ -121,6 +122,7 @@ export const PublicProfileSchema = z.object({
   verification: VerificationSchema,
   motorcycles: z.array(MotorcycleSchema.omit({ nickname: true })),
   memberSince: z.string(),
+  follow: FollowStateSchema,
 });
 export type PublicProfile = z.infer<typeof PublicProfileSchema>;
 

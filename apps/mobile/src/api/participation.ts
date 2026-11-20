@@ -7,12 +7,15 @@ import {
   type PageResponse,
   type Participant,
   ParticipantSchema,
+  type TripInvitation,
+  TripInvitationSchema,
 } from '@voyago/shared';
 import { z } from 'zod';
 import { apiRequest } from './http';
 
 const RequestPage = pageEnvelope(JoinRequestSchema);
 const NotificationPage = pageEnvelope(NotificationSchema);
+const InvitationPage = pageEnvelope(TripInvitationSchema);
 
 const page = async <T>(path: string, schema: z.ZodType<T>): Promise<T> =>
   schema.parse(await apiRequest(path, { schema: z.unknown(), raw: true }));
@@ -70,3 +73,33 @@ export const markNotificationRead = (id: string) =>
 
 export const markAllNotificationsRead = () =>
   apiRequest('/me/notifications/read-all', { method: 'POST', schema: z.unknown() });
+
+export const setParticipantRole = (
+  tripId: string,
+  userId: string,
+  role: 'CO_ORGANISER' | 'PARTICIPANT',
+): Promise<Participant[]> =>
+  apiRequest(`/trips/${tripId}/participants/${userId}/role`, {
+    method: 'POST',
+    body: { role },
+    schema: z.array(ParticipantSchema),
+  });
+
+export const inviteToTrip = (tripId: string, username: string): Promise<TripInvitation> =>
+  apiRequest(`/trips/${tripId}/invitations`, {
+    method: 'POST',
+    body: { username: username.trim().replace(/^@/, '') },
+    schema: TripInvitationSchema,
+  });
+
+export const listTripInvitations = (tripId: string): Promise<PageResponse<TripInvitation>> =>
+  page(`/trips/${tripId}/invitations?limit=50`, InvitationPage);
+
+export const listMyInvitations = (): Promise<PageResponse<TripInvitation>> =>
+  page('/me/trip-invitations?limit=50', InvitationPage);
+
+export const respondToInvitation = (
+  id: string,
+  verb: 'accept' | 'decline' | 'revoke',
+): Promise<TripInvitation> =>
+  apiRequest(`/trip-invitations/${id}/${verb}`, { method: 'POST', schema: TripInvitationSchema });

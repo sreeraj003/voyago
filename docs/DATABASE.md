@@ -254,6 +254,28 @@ fixed id beginning `5eed0000`, so re-running changes nothing. The `dev_*` accoun
 - Route data (`trips.origin/destination`, `trip_stops`) is planning data only. Live location is a
   separate store (Redis, milestone 11) and never written to these tables.
 
+## Milestone 08 changes (`20261120130000_communities_social`)
+
+- Enums: `CommunityCategory`, `TripInvitationStatus` (`PENDING`, `ACCEPTED`, `DECLINED`,
+  `REVOKED`), `PostType` (`TRIP_RECAP`, `PHOTO`, `ANNOUNCEMENT`), `PostVisibility` (`PUBLIC`,
+  `FOLLOWERS`, `COMMUNITY`). `MembershipStatus` gains `LEFT` and `REMOVED`; `NotificationType`
+  gains `TRIP_INVITE` and `COMMUNITY_UPDATE`; `ReportTargetType` gains `POST`.
+- `communities.category`. CHECKs: private communities need `APPROVAL`
+  (`communities_private_needs_approval`), slug format, non-blank name, cover key in the
+  `community-covers` folder. `community_members_one_owner`: one `OWNER` row per community.
+- `community_members.message` (the note sent with a request) and an index on
+  `(community_id, status)`.
+- New `trip_invitations` (trip, invitee, inviter, status, `responded_at`) with the partial unique
+  index `trip_invitations_one_pending` (one open invitation per person and trip) and a CHECK that
+  `responded_at` is set exactly when the invitation is no longer pending.
+- New `posts` (author, type, visibility, optional community and trip, body, up to six Cloudinary
+  image keys in the `post-photos` folder, place name). CHECKs: body or photo present, at most six
+  photos, announcements belong to a community, `COMMUNITY` visibility needs a community, recaps
+  name a trip, image key format. Soft deleted (`deleted_at`). Partial index
+  `posts_live_created_idx` serves the feed; `trips_published_at_idx` serves trips in the feed.
+- No coordinates are stored for communities or posts: a community's location is its city, and
+  posts carry a place name only.
+
 ## Milestone 07 changes (`20261120120000_participation`)
 
 - `JoinRequestStatus` value `EXPIRED` renamed `CANCELLED` (never used); `ParticipantStatus` gains

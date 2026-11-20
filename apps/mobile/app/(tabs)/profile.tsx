@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type PrivateProfile } from '@voyago/shared';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { requestEmailVerification, signOut } from '../../src/api/auth';
@@ -38,7 +39,20 @@ export default function ProfileScreen() {
           <ProfileSummary profile={profile.data} onEdit={() => setEditing(true)} />
         )
       ) : null}
+      {profile.data ? (
+        <Button
+          title="See my public profile"
+          variant="link"
+          onPress={() => router.push(`/users/${profile.data.username}`)}
+        />
+      ) : null}
+      <Button
+        title="My communities"
+        variant="link"
+        onPress={() => router.push('/explore?tab=communities&mine=1')}
+      />
       <PrivacySettings />
+      <Button title="Blocked people" variant="link" onPress={() => router.push('/me/blocked')} />
       <Button title="Sign out" variant="secondary" onPress={() => void signOut()} />
     </Screen>
   );

@@ -138,8 +138,15 @@ commercial departures).
 | POST   | `/join-requests/:id/reject`              | Bearer | 200     | `{ reason? }`, shown to the member.                                                            |
 | POST   | `/join-requests/:id/withdraw`            | Bearer | 200     | The requester only, while `PENDING`.                                                           |
 | GET    | `/trips/:id/participants`                | Bearer | 200     | Participants, the organiser and staff only. Public profile fields.                             |
-| POST   | `/trips/:id/participants/:userId/remove` | Bearer | 204     | `{ reason? }`. Organiser or staff; always audit logged.                                        |
+| POST   | `/trips/:id/participants/:userId/remove` | Bearer | 204     | `{ reason? }`. Organiser, co-organiser (participants only) or staff; always audit logged.      |
+| POST   | `/trips/:id/participants/:userId/role`   | Bearer | 200     | `{ role: CO_ORGANISER \| PARTICIPANT }`. Organiser only. Returns the people list.              |
 | POST   | `/trips/:id/leave`                       | Bearer | 204     | Leave a trip you joined (not the organiser).                                                   |
+| POST   | `/trips/:id/invitations`                 | Bearer | 201     | `{ username }`. Organisers. Unknown or blocked usernames → 404.                                |
+| GET    | `/trips/:id/invitations`                 | Bearer | 200     | Organisers. `status` (default `PENDING`), cursor.                                              |
+| GET    | `/me/trip-invitations`                   | Bearer | 200     | Invitations I received. `status` (default `PENDING`), cursor.                                  |
+| POST   | `/trip-invitations/:id/accept`           | Bearer | 200     | The invitee joins at once (capacity checked with the trip locked; 409 when full).              |
+| POST   | `/trip-invitations/:id/decline`          | Bearer | 200     | The invitee says no.                                                                           |
+| POST   | `/trip-invitations/:id/revoke`           | Bearer | 200     | Organisers withdraw an open invitation.                                                        |
 
 **Statuses:** join requests are `PENDING`, `APPROVED`, `REJECTED`, `WITHDRAWN` or `CANCELLED`
 (closed by the system when the trip is cancelled, started or expires). Participants are
@@ -147,9 +154,19 @@ commercial departures).
 
 **Rules:** not your own trip; one pending request per member and trip (409 otherwise; asking
 again after a withdrawal, a decline or leaving is fine); private trips, drafts and blocked
-organisers return 404; only `PUBLISHED` trips that haven't departed take people (`FULL` → 409
+organisers return 404; private trips are joined only by invitation (409 for a request); only
+`PUBLISHED` trips that haven't departed take people (`FULL` → 409
 "This trip is full"); removed members cannot ask again (403); nobody decides their own request;
-only the organiser or staff remove people, and the organiser can't be removed.
+the organiser, co-organisers and staff decide requests and remove people, but co-organisers
+can't remove other co-organisers and the organiser can't be removed.
+
+**Co-organisers** are participants the organiser promotes. They review requests, invite people
+and remove participants (audit logged); editing, publishing, starting, completing and cancelling
+stay with the organiser.
+
+**Invitations** let people see and join private trips (and skip approval on other trips). One
+open invitation per person and trip. Cancelling, starting or expiring a trip, or a block between
+the two people, withdraws open invitations (`REVOKED`).
 
 **Capacity** is checked with the trip row locked (`SELECT … FOR UPDATE`) while approving, and a
 database trigger rejects any participant beyond `max_participants` (and any lowering of the
@@ -157,7 +174,9 @@ maximum below the people already on the trip), so simultaneous approvals cannot 
 `PUBLISHED ⇄ FULL` follows every join, leave and removal.
 
 **Trip view additions:** `viewer.participantStatus`, `viewer.joinRequest` (latest, `{ id,
-status }`), `viewer.pendingRequestCount` (organiser and staff), and the actions `join` / `leave`.
+status }`), `viewer.pendingRequestCount` (organisers and staff), `viewer.isCoOrganiser`,
+`viewer.invitationId` (a pending invitation), `community` (`{ id, slug, name }` or null), and the
+actions `join`, `leave` and `manage_people`.
 
 ### Notifications
 
@@ -171,8 +190,73 @@ status }`), `viewer.pendingRequestCount` (organiser and staff), and the actions 
 In-app notifications are created in the same transaction as the change they describe: new join
 request (or someone joined an open trip), request approved or declined, removed from a trip,
 trip updated (departure, return, places, stops or title; description edits are not announced),
-trip cancelled (participants and pending requesters), and a reminder within 24 hours of departure
-(sent once per trip). `data` carries ids only. Push and email delivery come with milestone 09.
+trip cancelled (participants, pending requesters and invitees), a reminder within 24 hours of
+departure (sent once per trip), trip invitations, new followers, and community updates (requests
+for moderators, approvals, removals, announcements). `data` carries ids, a community slug or a
+username only. Push and email delivery come with milestone 09.
+
+### Communities
+
+Private communities show their name, description, category, city and owner to everyone, so
+people can ask to join; their trips, posts and members are visible to members only (403).
+
+| Method | Path                                         | Auth   | Success | Description                                                                                          |
+| ------ | -------------------------------------------- | ------ | ------- | ---------------------------------------------------------------------------------------------------- |
+| POST   | `/communities`                               | Bearer | 201     | Create; you become `OWNER`. Private communities must use `APPROVAL`. Slug taken → 409.               |
+| GET    | `/communities`                               | Bearer | 200     | `q`, `mode` (also matches both-mode communities), `category`, `city`, `mine`, cursor.                |
+| GET    | `/communities/:slug`                         | Bearer | 200     | With `viewer { role, status, canSeeContent, actions }`.                                              |
+| PATCH  | `/communities/:slug`                         | Bearer | 200     | Admins and the owner. The slug is fixed.                                                             |
+| DELETE | `/communities/:slug`                         | Bearer | 204     | Owner only (soft delete).                                                                            |
+| POST   | `/communities/:slug/join`                    | Bearer | 200     | `{ message? }`. Open public: joined at once. Otherwise a request (`PENDING`).                        |
+| POST   | `/communities/:slug/leave`                   | Bearer | 200     | Leave or cancel a request. The owner can't leave (409).                                              |
+| GET    | `/communities/:slug/members`                 | Bearer | 200     | `status` `ACTIVE` (members) or `PENDING` / `BANNED` (moderators). Request notes for moderators only. |
+| POST   | `/communities/:slug/members/:userId/approve` | Bearer | 204     | Moderators. Audit logged.                                                                            |
+| POST   | `/communities/:slug/members/:userId/reject`  | Bearer | 204     | Moderators. Audit logged.                                                                            |
+| POST   | `/communities/:slug/members/:userId/role`    | Bearer | 204     | `{ role: ADMIN \| MODERATOR \| MEMBER }`. Admins and the owner. Audit logged.                        |
+| POST   | `/communities/:slug/members/:userId/remove`  | Bearer | 204     | `{ reason?, ban? }`. Moderators. Audit logged.                                                       |
+| POST   | `/communities/:slug/members/:userId/unban`   | Bearer | 204     | Admins. Audit logged.                                                                                |
+| GET    | `/communities/:slug/trips`                   | Bearer | 200     | `when` `upcoming` (soonest first) or `past`. Members-only trips for members only.                    |
+| GET    | `/communities/:slug/posts`                   | Bearer | 200     | Posts and announcements; non-members of a public community see public ones only.                     |
+| POST   | `/communities/:slug/announcements`           | Bearer | 201     | `{ body, membersOnly? }`. Moderators. Members are notified.                                          |
+
+**Roles** rank `OWNER` > `ADMIN` > `MODERATOR` > `MEMBER`. Nobody can act on someone at or above
+their own rank, give a role at or above their own, or change their own role, so nobody can raise
+their own privileges. One owner per community (database index). Banned members can't ask again
+until an admin lifts the ban. Someone who blocked the owner, or was blocked by them, can't join.
+
+**Community trips:** trips take an optional `communityId` (you must be an active member) and the
+visibility `COMMUNITY`, which shows the trip to that community's active members only (404 for
+everyone else). Community trips never appear in public discovery.
+
+### Social
+
+| Method | Path                         | Auth   | Success | Description                                                                                                                   |
+| ------ | ---------------------------- | ------ | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/users/:username/follow`    | Bearer | 204     | Follow (no-op if already). The member is notified once.                                                                       |
+| DELETE | `/users/:username/follow`    | Bearer | 204     | Unfollow.                                                                                                                     |
+| GET    | `/users/:username/followers` | Bearer | 200     | `{ user, since, isFollowing }[]`, cursor. 403 unless their profile is fully visible.                                          |
+| GET    | `/users/:username/following` | Bearer | 200     | Same rules as followers.                                                                                                      |
+| POST   | `/users/:username/block`     | Bearer | 204     | Free and always available. Removes follows both ways and open invitations between you.                                        |
+| DELETE | `/users/:username/block`     | Bearer | 204     | Unblock.                                                                                                                      |
+| GET    | `/me/blocks`                 | Bearer | 200     | People I blocked.                                                                                                             |
+| POST   | `/reports`                   | Bearer | 201     | `{ targetType: USER \| TRIP \| COMMUNITY \| POST, targetId, reason, details? }`. A repeat while open returns the same report. |
+
+Public profiles gain `follow { followerCount, followingCount, isFollowing, followsYou, mutual }`.
+`followsYou` (and so `mutual`) is shown only when their profile is visible to you. A block in
+either direction makes profiles, trips, posts and feed items disappear both ways (404).
+
+### Posts and feed
+
+| Method | Path         | Auth   | Success | Description                                                                                             |
+| ------ | ------------ | ------ | ------- | ------------------------------------------------------------------------------------------------------- |
+| GET    | `/feed`      | Bearer | 200     | Newest first, cursor. Posts and newly published trips from people I follow, my own and my communities'. |
+| POST   | `/posts`     | Bearer | 201     | `TRIP_RECAP` (a completed trip you were on) or `PHOTO` (1–6 uploaded photos, kind `post-photo`).        |
+| DELETE | `/posts/:id` | Bearer | 204     | Author; community moderators and staff (audit logged).                                                  |
+
+Post `visibility` is `PUBLIC`, `FOLLOWERS` or `COMMUNITY` (needs `communityId`). Posts in a
+private community are always `COMMUNITY`. A post names its trip only if the trip is public.
+Places are names, never coordinates; the app strips photo metadata before upload. The feed is
+plain reverse-chronological with no ranking; items carry `kind` (`post` or `trip`) and `at`.
 
 ### Discovery
 
@@ -233,11 +317,13 @@ instead of pretending to work. Keys never reach the apps.
 | GET    | `/places/autocomplete`     | Bearer | 200     | `q` (2–120 chars), `sessionToken`. Google place suggestions, India only.     |
 | GET    | `/places/:placeId`         | Bearer | 200     | `sessionToken`. Name, address and point of a suggestion.                     |
 | POST   | `/uploads/cover-signature` | Bearer | 200     | Signed fields for one direct upload of a trip cover to Cloudinary.           |
+| POST   | `/uploads/signature`       | Bearer | 200     | `{ kind: trip-cover \| community-cover \| post-photo }`. Same, by kind.      |
 
 Place search is limited to 60 requests per minute per client and biased to Bengaluru. Results are
 Google's and the app shows "Results from Google". The upload signature fixes the folder, a random
 public id, allowed formats (JPG, PNG, WebP) and strips metadata; the app posts the file straight to
-`uploadUrl`, so photos never pass through the API.
+`uploadUrl`, so photos never pass through the API. Saved image ids must be in the member's own
+folder for that kind and exist in Cloudinary (checked with the Admin API).
 
 ## Success responses
 

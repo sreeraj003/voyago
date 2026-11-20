@@ -137,3 +137,20 @@ describe('trip form cover image', () => {
     }
   });
 });
+
+describe('trip form communities', () => {
+  const community = { id: '0e6f7a52-6c6f-4f0b-9a55-0c1d2e3f4a5b', name: 'Nandi Riders' };
+
+  it('posts a members-only trip into the chosen community', () => {
+    const result = toTripInput({ ...validForm(), community, visibility: 'COMMUNITY' });
+    expect(result.ok && result.input).toMatchObject({
+      visibility: 'COMMUNITY',
+      communityId: community.id,
+    });
+  });
+
+  it('falls back to public when no community is chosen', () => {
+    const result = toTripInput({ ...validForm(), visibility: 'COMMUNITY' });
+    expect(result.ok && result.input).toMatchObject({ visibility: 'PUBLIC', communityId: null });
+  });
+});

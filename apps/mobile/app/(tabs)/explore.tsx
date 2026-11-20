@@ -1,9 +1,11 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { type TripCard } from '@voyago/shared';
+import { useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { popularDestinations, searchTrips, trendingTrips } from '../../src/api/discovery';
 import { Choice } from '../../src/components/Choice';
+import { CommunityExplorer } from '../../src/components/CommunityExplorer';
 import { FilterSheet } from '../../src/components/FilterSheet';
 import { Button, FormMessage, TextField } from '../../src/components/Form';
 import { Screen } from '../../src/components/Screen';
@@ -21,9 +23,47 @@ import { radius, spacing, typography } from '../../src/theme/tokens';
 import { useTheme } from '../../src/theme/use-theme';
 
 export default function ExploreScreen() {
-  const { colors } = useTheme();
+  const params = useLocalSearchParams<{ tab?: string; mine?: string }>();
   const mode = useModeStore((state) => state.mode);
   const setMode = useModeStore((state) => state.setMode);
+  const [section, setSection] = useState<'trips' | 'communities'>(
+    params.tab === 'communities' ? 'communities' : 'trips',
+  );
+  return (
+    <Screen title="Explore">
+      <Choice
+        label="Showing"
+        value={mode}
+        options={[
+          { value: 'RIDE', label: 'Rides' },
+          { value: 'TRAVEL', label: 'Travel' },
+        ]}
+        onChange={setMode}
+      />
+      <Choice
+        label="Looking for"
+        value={section}
+        options={[
+          { value: 'trips', label: 'Trips' },
+          { value: 'communities', label: 'Communities' },
+        ]}
+        onChange={setSection}
+      />
+      {section === 'communities' ? (
+        <CommunityExplorer
+          key={params.mine ?? 'all'}
+          mode={mode}
+          initialMine={params.mine === '1'}
+        />
+      ) : (
+        <TripExplorer mode={mode} />
+      )}
+    </Screen>
+  );
+}
+
+function TripExplorer({ mode }: { mode: 'RIDE' | 'TRAVEL' }) {
+  const { colors } = useTheme();
   const [text, setText] = useState('');
   const [debounced, setDebounced] = useState('');
   const [filters, setFilters] = useState<DiscoveryFilters>(defaultFilters);
@@ -57,16 +97,7 @@ export default function ExploreScreen() {
   };
 
   return (
-    <Screen title="Explore">
-      <Choice
-        label="Showing"
-        value={mode}
-        options={[
-          { value: 'RIDE', label: 'Rides' },
-          { value: 'TRAVEL', label: 'Travel' },
-        ]}
-        onChange={setMode}
-      />
+    <>
       <TextField
         label="Search trips"
         value={text}
@@ -174,7 +205,7 @@ export default function ExploreScreen() {
         }}
         onClose={() => setSheetOpen(false)}
       />
-    </Screen>
+    </>
   );
 }
 

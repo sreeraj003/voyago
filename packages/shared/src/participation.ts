@@ -65,6 +65,37 @@ export const ParticipantSchema = z.object({
 });
 export type Participant = z.infer<typeof ParticipantSchema>;
 
+/** Organisers make participants co-organisers (and back). */
+export const SetParticipantRoleSchema = z.object({ role: z.enum(['CO_ORGANISER', 'PARTICIPANT']) });
+
+// ── Invitations (needed to join PRIVATE trips) ──────────────────────────────
+
+export const TripInvitationStatusSchema = z.enum(['PENDING', 'ACCEPTED', 'DECLINED', 'REVOKED']);
+export const CreateTripInvitationSchema = z.object({
+  username: z
+    .string()
+    .trim()
+    .regex(/^[A-Za-z0-9_.]{3,30}$/, 'Enter a Voyago username'),
+});
+export const TripInvitationSchema = z.object({
+  id: z.uuid(),
+  status: TripInvitationStatusSchema,
+  createdAt: z.string(),
+  respondedAt: z.string().nullable(),
+  trip: z.object({
+    id: z.uuid(),
+    title: z.string(),
+    departureAt: z.string(),
+    status: TripStatusSchema,
+  }),
+  invitee: PublicPerson,
+  invitedBy: PublicPerson.nullable(),
+});
+export type TripInvitation = z.infer<typeof TripInvitationSchema>;
+export const MyInvitationsQuerySchema = CursorPageQuerySchema.extend({
+  status: TripInvitationStatusSchema.default('PENDING'),
+});
+
 // ── Notifications ───────────────────────────────────────────────────────────
 
 export const NotificationTypeSchema = z.enum([
@@ -79,6 +110,8 @@ export const NotificationTypeSchema = z.enum([
   'NEW_FOLLOWER',
   'COMMUNITY_INVITE',
   'SAFETY_ALERT',
+  'TRIP_INVITE',
+  'COMMUNITY_UPDATE',
   'BOOKING_UPDATE',
   'PAYMENT_UPDATE',
   'SYSTEM',
@@ -91,7 +124,13 @@ export const NotificationSchema = z.object({
   title: z.string(),
   body: z.string().nullable(),
   /** Ids for navigation only. */
-  data: z.object({ tripId: z.uuid().optional(), joinRequestId: z.uuid().optional() }),
+  data: z.object({
+    tripId: z.uuid().optional(),
+    joinRequestId: z.uuid().optional(),
+    invitationId: z.uuid().optional(),
+    communitySlug: z.string().optional(),
+    username: z.string().optional(),
+  }),
   readAt: z.string().nullable(),
   createdAt: z.string(),
 });

@@ -13,9 +13,12 @@ import { PrismaModule } from './database/prisma.module.js';
 import { HealthModule } from './health/health.module.js';
 import { IntegrationsModule } from './integrations/integrations.module.js';
 import { RedisModule } from './redis/redis.module.js';
+import { SocialModule } from './social/social.module.js';
+import { CommunitiesModule } from './communities/communities.module.js';
 import { DiscoveryModule } from './discovery/discovery.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { ParticipationModule } from './participation/participation.module.js';
+import { PostsModule } from './posts/posts.module.js';
 import { TripsModule } from './trips/trips.module.js';
 import { UsersModule } from './users/users.module.js';
 
@@ -85,6 +88,9 @@ export class AppModule {
         TripsModule,
         DiscoveryModule,
         ParticipationModule,
+        SocialModule,
+        PostsModule,
+        CommunitiesModule,
         ...extraModules,
       ],
       providers: [

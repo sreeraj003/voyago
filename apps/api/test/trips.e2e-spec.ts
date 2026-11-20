@@ -181,6 +181,8 @@ describe('trips (e2e)', () => {
       expect(seen.viewer).toEqual({
         isOrganiser: false,
         isParticipant: false,
+        isCoOrganiser: false,
+        invitationId: null,
         participantStatus: null,
         joinRequest: null,
         pendingRequestCount: 0,

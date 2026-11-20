@@ -3,11 +3,17 @@ import { type Trip } from '@voyago/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Image, Linking, StyleSheet, Text, View } from 'react-native';
-import { askToJoin, leaveTrip, withdrawRequest } from '../../../src/api/participation';
+import {
+  askToJoin,
+  leaveTrip,
+  respondToInvitation,
+  withdrawRequest,
+} from '../../../src/api/participation';
 import { cancelTrip, deleteTrip, getTrip, tripAction } from '../../../src/api/trips';
 import { useFormError } from '../../../src/auth/use-form-error';
 import { Button, FormMessage, TextField } from '../../../src/components/Form';
 import { FormScreen } from '../../../src/components/FormScreen';
+import { ReportForm } from '../../../src/components/ReportForm';
 import { StatusBadge } from '../../../src/components/StatusBadge';
 import { formatRupees } from '../../../src/trips/trip-form';
 import { directionsUrl, routeSummary } from '../../../src/trips/trip-route';
@@ -61,9 +67,22 @@ function TripDetail({ trip }: { trip: Trip }) {
           {trip.title}
         </Text>
         <Text style={[styles.caption, { color: colors.textMuted }]}>
-          {trip.mode === 'RIDE' ? 'Ride' : 'Travel'} · organised by {trip.organiser.displayName} (@
-          {trip.organiser.username}) · free community trip
+          {trip.mode === 'RIDE' ? 'Ride' : 'Travel'} · free community trip
+          {trip.visibility === 'PRIVATE' ? ' · private (invite only)' : ''}
+          {trip.visibility === 'COMMUNITY' ? ' · members only' : ''}
         </Text>
+        <Button
+          title={`Organised by ${trip.organiser.displayName} (@${trip.organiser.username})`}
+          variant="link"
+          onPress={() => router.push(`/users/${trip.organiser.username}`)}
+        />
+        {trip.community ? (
+          <Button
+            title={`In ${trip.community.name}`}
+            variant="link"
+            onPress={() => router.push(`/communities/${trip.community?.slug ?? ''}`)}
+          />
+        ) : null}
         {trip.description ? (
           <Text style={[styles.body, { color: colors.text }]}>{trip.description}</Text>
         ) : null}
@@ -96,6 +115,21 @@ function TripDetail({ trip }: { trip: Trip }) {
       </View>
       <Membership trip={trip} />
       <TripActions trip={trip} />
+      {trip.status === 'COMPLETED' && (trip.viewer.isParticipant || trip.viewer.isOrganiser) ? (
+        <Button
+          title="Share a trip recap"
+          variant="secondary"
+          onPress={() =>
+            router.push({
+              pathname: '/posts/new',
+              params: { tripId: trip.id, tripTitle: trip.title },
+            })
+          }
+        />
+      ) : null}
+      {trip.viewer.isOrganiser ? null : (
+        <ReportForm targetType="TRIP" targetId={trip.id} label="Report trip" />
+      )}
     </>
   );
 }
@@ -131,6 +165,16 @@ function Membership({ trip }: { trip: Trip }) {
     onSuccess: refresh,
     onError: (caught) => error.capture(caught),
   });
+  const answer = useMutation({
+    mutationFn: (verb: 'accept' | 'decline') =>
+      respondToInvitation(viewer.invitationId ?? '', verb),
+    onMutate: () => error.clear(),
+    onSuccess: () => {
+      refresh();
+      void queryClient.invalidateQueries({ queryKey: ['my-invitations'] });
+    },
+    onError: (caught) => error.capture(caught),
+  });
   const leave = useMutation({
     mutationFn: () => leaveTrip(trip.id),
     onMutate: () => error.clear(),
@@ -142,10 +186,30 @@ function Membership({ trip }: { trip: Trip }) {
   });
 
   const canSeePeople = viewer.isOrganiser || viewer.isParticipant;
+  const managesPeople = actions.has('manage_people');
   return (
     <View style={styles.actions}>
       {error.message ? <FormMessage tone="error">{error.message}</FormMessage> : null}
-      {viewer.isOrganiser && trip.approvalRequired && trip.status !== 'DRAFT' ? (
+      {viewer.isCoOrganiser ? (
+        <FormMessage tone="info">You are a co-organiser of this trip.</FormMessage>
+      ) : null}
+      {viewer.invitationId ? (
+        <>
+          <FormMessage tone="info">You’re invited to this trip.</FormMessage>
+          <Button
+            title="Accept and join"
+            loading={answer.isPending && answer.variables === 'accept'}
+            onPress={() => answer.mutate('accept')}
+          />
+          <Button
+            title="Decline"
+            variant="secondary"
+            loading={answer.isPending && answer.variables === 'decline'}
+            onPress={() => answer.mutate('decline')}
+          />
+        </>
+      ) : null}
+      {managesPeople && trip.approvalRequired ? (
         <Button
           title={
             viewer.pendingRequestCount > 0
@@ -154,6 +218,13 @@ function Membership({ trip }: { trip: Trip }) {
           }
           variant={viewer.pendingRequestCount > 0 ? 'primary' : 'secondary'}
           onPress={() => router.push(`/trips/${trip.id}/requests`)}
+        />
+      ) : null}
+      {managesPeople && ['PUBLISHED', 'FULL'].includes(trip.status) ? (
+        <Button
+          title="Invite people"
+          variant="secondary"
+          onPress={() => router.push(`/trips/${trip.id}/invite`)}
         />
       ) : null}
       {canSeePeople && trip.status !== 'DRAFT' ? (
@@ -267,6 +338,7 @@ function TripActions({ trip }: { trip: Trip }) {
 
   actions.delete('join');
   actions.delete('leave');
+  actions.delete('manage_people');
   if (actions.size === 0) return null;
   return (
     <View style={styles.actions}>

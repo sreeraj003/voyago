@@ -50,6 +50,8 @@ export interface TripRecord {
   createdAt: Date;
   updatedAt: Date;
   organiser: { id: string; username: string; displayName: string };
+  communityId: string | null;
+  community: { id: string; slug: string; name: string } | null;
 }
 
 export interface TripGeo {
@@ -73,26 +75,42 @@ export interface ViewerContext {
   participantStatus?: ParticipantStatus | null;
   joinRequest?: { id: string; status: JoinRequestStatus } | null;
   pendingRequestCount?: number;
+  /** An active co-organiser: helps run the trip. */
+  isCoOrganiser?: boolean;
+  /** The viewer's pending invitation, if any. Lets an invitee see a private trip. */
+  invitationId?: string | null;
+  /** Active member of the trip's community (for COMMUNITY trips). */
+  communityMember?: boolean;
 }
 
 /** What the viewer has to do with the trip, for working out join and leave. */
 export interface Membership {
   participantStatus: ParticipantStatus | null;
   hasPendingRequest: boolean;
+  isCoOrganiser?: boolean;
 }
 const NO_MEMBERSHIP: Membership = { participantStatus: null, hasPendingRequest: false };
+
+/** Organiser, active co-organiser or staff: may decide requests, invite and remove people. */
+export function canManagePeople(trip: TripRecord, viewer: ViewerContext): boolean {
+  return (
+    trip.organiserId === viewer.user.id || viewer.isCoOrganiser === true || isStaff(viewer.user)
+  );
+}
 
 export const isStaff = (user: AuthUser) => user.role === 'ADMIN' || user.role === 'MODERATOR';
 
 /**
- * Who may see a trip: drafts only their organiser (and staff); private trips only participants;
- * nobody on either side of a block. Anyone else gets 404, so hidden trips are not confirmed.
+ * Who may see a trip: drafts only their organiser (and staff); private trips participants and
+ * people invited; community trips that community's members; nobody on either side of a block.
+ * Anyone else gets 404, so hidden trips are not confirmed.
  */
 export function canView(trip: TripRecord, viewer: ViewerContext): boolean {
   if (isStaff(viewer.user) || trip.organiserId === viewer.user.id) return true;
   if (viewer.blocked) return false;
   if (trip.status === 'DRAFT') return false;
-  return trip.visibility === 'PUBLIC' || viewer.isParticipant;
+  if (trip.visibility === 'PUBLIC' || viewer.isParticipant || viewer.invitationId) return true;
+  return trip.visibility === 'COMMUNITY' && viewer.communityMember === true;
 }
 
 /** True once the trip is underway: by status, or because departure time has passed. */
@@ -122,6 +140,9 @@ export function allowedActions(
     }
     if (trip.status === 'IN_PROGRESS') actions.push('complete');
   }
+  if ((isOrganiser || membership.isCoOrganiser) && !terminal && trip.status !== 'DRAFT') {
+    actions.push('manage_people');
+  }
   if ((isOrganiser || isStaff(user)) && canTransition(trip.status, 'CANCELLED')) {
     actions.push('cancel');
   }
@@ -129,8 +150,10 @@ export function allowedActions(
     const status = membership.participantStatus;
     // Removed members can't ask again; the organiser made that call.
     const canAsk = status === null || status === 'LEFT';
+    // Private trips are joined by accepting an invitation, not by asking.
     if (
       canAsk &&
+      trip.visibility !== 'PRIVATE' &&
       !membership.hasPendingRequest &&
       trip.status === 'PUBLISHED' &&
       trip.departureAt.getTime() > now
@@ -203,6 +226,7 @@ export function toTripView(
     bikeCategories: trip.bikeCategories,
     approvalRequired: trip.approvalRequired,
     organiser: trip.organiser,
+    community: trip.community,
     publishedAt: iso(trip.publishedAt),
     startedAt: iso(trip.startedAt),
     completedAt: iso(trip.completedAt),
@@ -213,12 +237,15 @@ export function toTripView(
     viewer: {
       isOrganiser,
       isParticipant: viewer.isParticipant,
+      isCoOrganiser: viewer.isCoOrganiser ?? false,
+      invitationId: viewer.invitationId ?? null,
       participantStatus: viewer.participantStatus ?? null,
       joinRequest: viewer.joinRequest ?? null,
       pendingRequestCount: viewer.pendingRequestCount ?? 0,
       actions: allowedActions(trip, viewer.user, {
         participantStatus: viewer.participantStatus ?? null,
         hasPendingRequest: viewer.joinRequest?.status === 'PENDING',
+        isCoOrganiser: viewer.isCoOrganiser ?? false,
       }),
     },
   };

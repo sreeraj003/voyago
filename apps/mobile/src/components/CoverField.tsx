@@ -1,7 +1,8 @@
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
-import { uploadCover } from '../api/maps-media';
+import { type UploadKind } from '@voyago/shared';
+import { uploadImage } from '../api/maps-media';
 import { radius, spacing, typography } from '../theme/tokens';
 import { useTheme } from '../theme/use-theme';
 import { Button } from './Form';
@@ -10,10 +11,11 @@ type Props = {
   previewUri: string | null;
   onUploaded: (imageId: string, previewUri: string) => void;
   onRemove: () => void;
+  kind?: UploadKind;
 };
 
 /** Pick a cover photo and upload it to Cloudinary. Shown only when uploads are configured. */
-export function CoverField({ previewUri, onUploaded, onRemove }: Props) {
+export function CoverField({ previewUri, onUploaded, onRemove, kind = 'trip-cover' }: Props) {
   const { colors } = useTheme();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +33,7 @@ export function CoverField({ previewUri, onUploaded, onRemove }: Props) {
     if (!asset) return;
     setBusy(true);
     try {
-      onUploaded(await uploadCover(asset), asset.uri);
+      onUploaded(await uploadImage(asset, kind), asset.uri);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Upload failed');
     } finally {

@@ -5,13 +5,18 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { type UploadSignature } from '@voyago/shared';
+import { type UploadKind, type UploadSignature } from '@voyago/shared';
 import { createHash, randomUUID } from 'node:crypto';
 import { APP_CONFIG, type AppConfig } from '../config/app-config.js';
 import { HTTP_FETCH, type HttpFetch, PROVIDER_TIMEOUT_MS } from './http-fetch.js';
 
 export const COVER_MAX_BYTES = 8 * 1024 * 1024;
 const COVER_FORMATS = 'jpg,jpeg,png,webp';
+const FOLDERS: Record<UploadKind, string> = {
+  'trip-cover': 'trip-covers',
+  'community-cover': 'community-covers',
+  'post-photo': 'post-photos',
+};
 
 /**
  * Cloudinary for trip cover images. The app uploads straight to Cloudinary with a signature
@@ -31,14 +36,22 @@ export class CloudinaryService {
     return this.config.CLOUDINARY_API_SECRET.length > 0;
   }
 
-  /** The folder a member's covers must live in; used to reject other people's images. */
+  /** The folder a member's uploads of one kind must live in; other people's are rejected. */
+  folderFor(userId: string, kind: UploadKind): string {
+    return `${this.config.CLOUDINARY_FOLDER}/${FOLDERS[kind]}/${userId}`;
+  }
+
   coverFolder(userId: string): string {
-    return `${this.config.CLOUDINARY_FOLDER}/trip-covers/${userId}`;
+    return this.folderFor(userId, 'trip-cover');
   }
 
   signCoverUpload(userId: string, now = Date.now()): UploadSignature {
+    return this.signUpload(userId, 'trip-cover', now);
+  }
+
+  signUpload(userId: string, kind: UploadKind, now = Date.now()): UploadSignature {
     this.assertEnabled();
-    const imageId = `${this.coverFolder(userId)}/${randomUUID()}`;
+    const imageId = `${this.folderFor(userId, kind)}/${randomUUID()}`;
     const params = {
       allowed_formats: COVER_FORMATS,
       public_id: imageId,
@@ -68,12 +81,21 @@ export class CloudinaryService {
    * and is within the size limit (checked with the Admin API).
    */
   async assertOwnUploadedCover(userId: string, imageId: string): Promise<void> {
+    return this.assertOwnUpload(userId, imageId, 'trip-cover', 'coverImageId');
+  }
+
+  async assertOwnUpload(
+    userId: string,
+    imageId: string,
+    kind: UploadKind,
+    path: string,
+  ): Promise<void> {
     this.assertEnabled();
     const invalid = new BadRequestException({
       message: 'Validation failed',
-      details: [{ path: 'coverImageId', message: 'Upload the image again' }],
+      details: [{ path, message: 'Upload the image again' }],
     });
-    if (!imageId.startsWith(`${this.coverFolder(userId)}/`)) throw invalid;
+    if (!imageId.startsWith(`${this.folderFor(userId, kind)}/`)) throw invalid;
     const {
       CLOUDINARY_CLOUD_NAME: cloud,
       CLOUDINARY_API_KEY: key,
@@ -105,6 +127,12 @@ export class CloudinaryService {
   coverUrl(imageId: string | null): string | null {
     if (!imageId || !this.config.CLOUDINARY_CLOUD_NAME) return null;
     return `https://res.cloudinary.com/${this.config.CLOUDINARY_CLOUD_NAME}/image/upload/c_fill,g_auto,w_1200,h_630,q_auto,f_auto/${imageId}`;
+  }
+
+  /** Photos keep their shape, at most 1600 px wide. */
+  photoUrl(imageId: string): string | null {
+    if (!this.config.CLOUDINARY_CLOUD_NAME) return null;
+    return `https://res.cloudinary.com/${this.config.CLOUDINARY_CLOUD_NAME}/image/upload/c_limit,w_1600,q_auto,f_auto/${imageId}`;
   }
 
   private assertEnabled(): void {

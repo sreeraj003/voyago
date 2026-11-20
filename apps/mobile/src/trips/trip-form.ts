@@ -30,7 +30,9 @@ export type TripForm = {
   returnAt: string;
   minParticipants: string;
   maxParticipants: string;
-  visibility: 'PUBLIC' | 'PRIVATE';
+  visibility: 'PUBLIC' | 'PRIVATE' | 'COMMUNITY';
+  /** The community the trip is posted in, if any. */
+  community: { id: string; name: string } | null;
   approvalRequired: boolean;
   budgetRupees: string;
   distanceKm: string;
@@ -60,6 +62,7 @@ export const emptyTripForm = (mode: 'RIDE' | 'TRAVEL' = 'RIDE'): TripForm => ({
   minParticipants: '1',
   maxParticipants: '6',
   visibility: 'PUBLIC',
+  community: null,
   approvalRequired: true,
   budgetRupees: '',
   distanceKm: '',
@@ -177,7 +180,8 @@ export function toTripInput(form: TripForm): FormResult {
     bikeCategories: (form.mode === 'RIDE' ? form.bikeCategories : []) as NonNullable<
       CreateTripInput['bikeCategories']
     >,
-    visibility: form.visibility,
+    visibility: form.community || form.visibility !== 'COMMUNITY' ? form.visibility : 'PUBLIC',
+    communityId: form.community?.id ?? null,
     approvalRequired: form.approvalRequired,
     ...(form.coverImageId === undefined ? {} : { coverImageId: form.coverImageId }),
   };
@@ -213,7 +217,9 @@ export function fromTrip(trip: Trip): TripForm {
     returnAt: formatLocalDateTime(trip.returnAt),
     minParticipants: String(trip.minParticipants),
     maxParticipants: String(trip.maxParticipants),
-    visibility: trip.visibility === 'PRIVATE' ? 'PRIVATE' : 'PUBLIC',
+    visibility:
+      trip.visibility === 'PRIVATE' || trip.visibility === 'COMMUNITY' ? trip.visibility : 'PUBLIC',
+    community: trip.community ? { id: trip.community.id, name: trip.community.name } : null,
     approvalRequired: trip.approvalRequired,
     budgetRupees: rupees,
     distanceKm: trip.estimatedDistanceKm === null ? '' : String(trip.estimatedDistanceKm),

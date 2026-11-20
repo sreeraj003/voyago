@@ -17,7 +17,7 @@ export interface NewNotification {
   title: string;
   body?: string | null;
   /** Ids for navigation only; never personal data. */
-  data?: { tripId?: string; joinRequestId?: string };
+  data?: AppNotification['data'];
 }
 
 /**
@@ -99,11 +99,15 @@ export class NotificationsService {
   }
 }
 
+const DATA_KEYS = ['tripId', 'joinRequestId', 'invitationId', 'communitySlug', 'username'] as const;
+
 function readData(value: unknown): AppNotification['data'] {
   if (!value || typeof value !== 'object') return {};
-  const { tripId, joinRequestId } = value as Record<string, unknown>;
-  return {
-    ...(typeof tripId === 'string' ? { tripId } : {}),
-    ...(typeof joinRequestId === 'string' ? { joinRequestId } : {}),
-  };
+  const record = value as Record<string, unknown>;
+  const data: AppNotification['data'] = {};
+  for (const key of DATA_KEYS) {
+    const item = record[key];
+    if (typeof item === 'string') data[key] = item;
+  }
+  return data;
 }

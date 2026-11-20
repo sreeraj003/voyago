@@ -12,7 +12,7 @@ verified before the next starts.
 | 05  | Trip creation and lifecycle                 | Done        |
 | 06  | Discovery and geospatial search             | Done        |
 | 07  | Join requests and participant management    | Done        |
-| 08  | Communities and social graph                | Not started |
+| 08  | Communities and social graph                | Done        |
 | 09  | Chat and notifications                      | Not started |
 | 10  | Admin dashboard and moderation              | Not started |
 | 11  | Live location and safety workflows          | Not started |
@@ -21,6 +21,84 @@ verified before the next starts.
 | 14  | Subscriptions and monetisation              | Not started |
 | 15  | Analytics, observability and operations     | Not started |
 | 16  | Security, testing, launch readiness, deploy | Not started |
+
+---
+
+## Milestone 08: Communities and social graph (2026-11-20)
+
+Also completes the milestone 07 follow-ups: co-organisers and invitations to private trips.
+
+### Implemented
+
+- **Co-organisers** (`apps/api/src/participation`): the organiser promotes a participant (and
+  can demote them). Co-organisers review join requests, invite people and remove participants
+  (audit logged), but cannot remove each other, edit, publish, start, complete or cancel.
+- **Trip invitations:** organisers and co-organisers invite by username. Invitees can see a
+  private trip and join it by accepting (same locked capacity check as approvals); on other
+  trips an invitation skips approval. Decline and revoke; open invitations are withdrawn when the
+  trip is cancelled, started or expires, or when either person blocks the other. Private trips
+  can no longer be joined by request.
+- **Communities** (`apps/api/src/communities`): create (creator is owner), edit (admins), delete
+  (owner), search and list (`q`, mode, category, city, mine), join open communities, ask to join
+  approval communities with a note, cancel, leave (not the owner), approve and decline requests,
+  ranked roles (owner, admin, moderator, member) where nobody can act on their own rank or above,
+  remove and ban with a reason, lift bans, member lists, community trips (upcoming and past),
+  community posts and announcements with member notifications. Every moderator action is audit
+  logged. Private communities show only their card to non-members.
+- **Community trips:** trips can be posted in a community you belong to, with the new
+  `COMMUNITY` visibility (members only). They stay out of public discovery.
+- **Social graph** (`apps/api/src/social`): follow and unfollow (with a notification), follower
+  and following lists that respect profile visibility, follow state on public profiles (mutual
+  and "follows you" only where the profile is visible), block and unblock (removes follows both
+  ways and open invitations; blocked people disappear from profiles, trips, lists and the feed),
+  my blocked list, and reports of members, trips, communities and posts (repeats merged).
+- **Posts and feed** (`apps/api/src/posts`): trip recaps (completed trips you were on),
+  destination photos (1–6 Cloudinary photos, kind `post-photo`), community announcements, and
+  deletion by the author or community moderators and staff (audited). `GET /feed` is a plain
+  reverse-chronological mix of posts and newly published trips from people you follow, your own,
+  and your communities, with no ranking.
+- **Uploads:** `POST /uploads/signature` signs uploads by kind (trip cover, community cover, post
+  photo); each kind has its own folder per member.
+- **Mobile:** Explore has a Trips / Communities switch with community search, "Mine" and "Start
+  a community". New screens: community detail (join state, members, edit, announcements, upcoming
+  and past trips, posts, report), members and requests with approve, decline, roles, remove and
+  ban, create and edit community, public profiles with follow, block and report, blocked people,
+  new post (recap or photos), and trip invitations. The trip page gains co-organiser controls,
+  "Invite people", accept/decline for invitees, links to the organiser and community, "Share a
+  trip recap" and "Report trip"; the people screen can make co-organisers. Home shows the feed;
+  the Inbox shows pending invitations and opens followers and communities from notifications.
+  "Plan a trip for this community" creates a members-only trip.
+
+### Database changes
+
+Migration `20261120130000_communities_social`; see `docs/DATABASE.md`.
+
+### Tests
+
+- 32 new end-to-end tests (150 in total): co-organiser appointment and limits; invitations to
+  private trips (visibility, accept, decline, revoke, blocks, capacity, cancellation); community
+  creation, open and approval joining, private content access, leaving; role ranking (nobody
+  raises their own privileges), removal, bans and lifting them, audit records; announcements,
+  members-only posts, moderator deletion; community trip visibility and membership checks;
+  follows, mutual state, private follower lists; blocks hiding everything both ways; reports;
+  recap rules; feed visibility (followers-only posts, private community posts, blocks) and paging
+  without repeats.
+- API unit tests for co-organiser, invitation and community-trip visibility rules; mobile unit
+  tests for the community trip form and community addresses (35 mobile tests).
+- Browser check on Expo web against the real API: feed, joining a community, members list,
+  following, an owner's announcement and member list, inviting to a trip, accepting from the
+  Inbox, and the announcement in the member's feed. No errors.
+
+### Outstanding
+
+- Push and email notifications arrive with milestone 09 and need provider credentials.
+- Photo posts and community covers need the Cloudinary keys in the server environment; without
+  them the API returns 503 and the app hides photo options.
+- Reports are stored for the moderation queue; the admin tools that work through them are
+  milestone 10.
+- Ownership transfer is not built yet; an owner can delete the community instead of leaving.
+- Communities are found by name, description and city; nearby (map) search for communities is
+  not built.
 
 ---
 
@@ -64,9 +142,7 @@ Migration `20261120120000_participation`; see `docs/DATABASE.md`.
 
 ### Outstanding
 
-- Invitations to private trips come with communities (milestone 08); until then private trips
-  can't be joined by request.
-- Co-organisers can't yet decide requests.
+- ~~Invitations to private trips~~ and ~~co-organisers~~: done in milestone 08.
 - Notifications are in-app only; push and email arrive with milestone 09.
 
 ---

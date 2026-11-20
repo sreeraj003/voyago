@@ -1,7 +1,12 @@
-import { Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
-import { PlaceDetailsQuerySchema, PlaceIdSchema, PlaceSearchQuerySchema } from '@voyago/shared';
+import {
+  PlaceDetailsQuerySchema,
+  PlaceIdSchema,
+  PlaceSearchQuerySchema,
+  UploadSignatureRequestSchema,
+} from '@voyago/shared';
 import { type AuthUser, CurrentUser } from '../common/auth/current-user.decorator.js';
 import { ApiErrorResponses } from '../common/openapi/zod-openapi.js';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe.js';
@@ -11,6 +16,7 @@ import { GoogleMapsService } from './google-maps.service.js';
 
 class PlaceSearchQueryDto extends createZodDto(PlaceSearchQuerySchema) {}
 class PlaceDetailsQueryDto extends createZodDto(PlaceDetailsQuerySchema) {}
+class UploadSignatureRequestDto extends createZodDto(UploadSignatureRequestSchema) {}
 
 @ApiTags('maps and media')
 @ApiBearerAuth()
@@ -60,5 +66,15 @@ export class IntegrationsController {
   @ApiErrorResponses(503)
   coverSignature(@CurrentUser() user: AuthUser) {
     return { data: this.cloudinary.signCoverUpload(user.id) };
+  }
+
+  @Post('uploads/signature')
+  @ApiOperation({
+    summary:
+      'Signature for one direct upload to Cloudinary: trip cover, community cover or post photo',
+  })
+  @ApiErrorResponses(400, 503)
+  signature(@CurrentUser() user: AuthUser, @Body() body: UploadSignatureRequestDto) {
+    return { data: this.cloudinary.signUpload(user.id, body.kind) };
   }
 }

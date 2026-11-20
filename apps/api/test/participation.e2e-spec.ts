@@ -7,6 +7,7 @@ import {
   JoinRequestSchema,
   NotificationSchema,
   ParticipantSchema,
+  TripInvitationSchema,
   TripSchema,
 } from '@voyago/shared';
 import { randomUUID } from 'node:crypto';
@@ -426,6 +427,166 @@ describe('participation (e2e)', () => {
       expect(await count()).toBe(unread - 1);
       await http().post('/api/v1/me/notifications/read-all').set(as('bob')).expect(200);
       expect(await count()).toBe(0);
+    });
+  });
+
+  describe('co-organisers', () => {
+    const join = async (name: Name, tripId: string) => {
+      const req = await askOk(name, tripId);
+      await decide('alice', req.id, 'approve').expect(200);
+    };
+    const setRole = (by: Name, tripId: string, who: Name, role: string) =>
+      http()
+        .post(`/api/v1/trips/${tripId}/participants/${ids[who]}/role`)
+        .set(as(by))
+        .send({ role });
+
+    it('lets the organiser appoint a co-organiser who then manages requests', async () => {
+      const tripId = await createTrip();
+      await join('bob', tripId);
+      await join('carol', tripId);
+
+      // Only the organiser appoints, and only people on the trip.
+      await setRole('bob', tripId, 'carol', 'CO_ORGANISER').expect(403);
+      await setRole('alice', tripId, 'dave', 'CO_ORGANISER').expect(404);
+      await setRole('alice', tripId, 'alice', 'PARTICIPANT').expect(409);
+      const people = z
+        .object({ data: z.array(ParticipantSchema) })
+        .parse((await setRole('alice', tripId, 'bob', 'CO_ORGANISER').expect(200)).body).data;
+      expect(people.find((p) => p.user.id === ids.bob)?.role).toBe('CO_ORGANISER');
+
+      const bobView = await getTrip('bob', tripId);
+      expect(bobView.viewer).toMatchObject({ isCoOrganiser: true, isOrganiser: false });
+      expect(bobView.viewer.actions).toContain('manage_people');
+      expect(bobView.viewer.actions).not.toContain('edit');
+      expect((await getTrip('carol', tripId)).viewer.actions).not.toContain('manage_people');
+
+      const pending = await askOk('dave', tripId);
+      expect((await getTrip('bob', tripId)).viewer.pendingRequestCount).toBe(1);
+      await http().get(`/api/v1/trips/${tripId}/join-requests`).set(as('bob')).expect(200);
+      await http().get(`/api/v1/trips/${tripId}/join-requests`).set(as('carol')).expect(403);
+      await decide('carol', pending.id, 'approve').expect(403);
+      await decide('bob', pending.id, 'approve').expect(200);
+      const audit = await prisma().auditLog.findFirst({
+        where: { actorId: ids.bob, action: 'trip.join_request_approve', entityId: tripId },
+      });
+      expect(audit).not.toBeNull();
+
+      // Co-organisers remove participants, never each other or the organiser.
+      await setRole('alice', tripId, 'carol', 'CO_ORGANISER').expect(200);
+      const remove = (by: Name, who: Name) =>
+        http()
+          .post(`/api/v1/trips/${tripId}/participants/${ids[who]}/remove`)
+          .set(as(by))
+          .send({ reason: 'Testing removal' });
+      await remove('bob', 'carol').expect(403);
+      await remove('bob', 'alice').expect(409);
+      await remove('bob', 'dave').expect(204);
+
+      // Stepping down takes the powers away.
+      await setRole('alice', tripId, 'bob', 'PARTICIPANT').expect(200);
+      const after = await getTrip('bob', tripId);
+      expect(after.viewer.isCoOrganiser).toBe(false);
+      expect(after.viewer.actions).not.toContain('manage_people');
+      await http().get(`/api/v1/trips/${tripId}/join-requests`).set(as('bob')).expect(403);
+    });
+  });
+
+  describe('invitations', () => {
+    const invite = (by: Name, tripId: string, who: string) =>
+      http()
+        .post(`/api/v1/trips/${tripId}/invitations`)
+        .set(as(by))
+        .send({ username: (NAMES as readonly string[]).includes(who) ? `${prefix}_${who}` : who });
+    const InvitationPage = z.object({
+      data: z.array(TripInvitationSchema),
+    });
+    const respond = (name: Name, id: string, verb: string) =>
+      http().post(`/api/v1/trip-invitations/${id}/${verb}`).set(as(name));
+
+    it('lets an invitee see and join a private trip', async () => {
+      const tripId = await createTrip(body({ visibility: 'PRIVATE', title: 'Private ride' }));
+      await http().get(`/api/v1/trips/${tripId}`).set(as('erin')).expect(404);
+      await ask('erin', tripId).expect(404);
+
+      await invite('erin', tripId, 'frank').expect(404); // can't see it, so can't invite
+      await invite('alice', tripId, 'nobody_here_xyz').expect(404);
+      await invite('alice', tripId, 'alice').expect(409);
+      const created = dataOf(
+        TripInvitationSchema,
+        await invite('alice', tripId, 'erin').expect(201),
+      );
+      expect(created).toMatchObject({ status: 'PENDING', invitee: { id: ids.erin } });
+      await invite('alice', tripId, 'erin').expect(409);
+
+      const seen = await getTrip('erin', tripId);
+      expect(seen.viewer.invitationId).toBe(created.id);
+      expect(seen.viewer.actions).not.toContain('join');
+      expect(seen.origin.approximate).toBe(true);
+      // Private trips are joined by accepting, not asking.
+      expect((await ask('erin', tripId).expect(409)).body).toMatchObject({
+        message: 'You are invited: accept the invitation to join',
+      });
+      expect((await notifications('erin'))[0]).toMatchObject({
+        type: 'TRIP_INVITE',
+        data: { tripId, invitationId: created.id },
+      });
+      const mine = InvitationPage.parse(
+        (await http().get('/api/v1/me/trip-invitations').set(as('erin')).expect(200)).body,
+      ).data;
+      expect(mine.map((i) => i.id)).toContain(created.id);
+      const forTrip = InvitationPage.parse(
+        (await http().get(`/api/v1/trips/${tripId}/invitations`).set(as('alice')).expect(200)).body,
+      ).data;
+      expect(forTrip.map((i) => i.id)).toEqual([created.id]);
+
+      await respond('frank', created.id, 'accept').expect(404);
+      const accepted = dataOf(TripInvitationSchema, await respond('erin', created.id, 'accept'));
+      expect(accepted.status).toBe('ACCEPTED');
+      const joined = await getTrip('erin', tripId);
+      expect(joined.viewer).toMatchObject({ isParticipant: true, invitationId: null });
+      expect(joined.origin.approximate).toBe(false);
+      await respond('erin', created.id, 'decline').expect(409);
+    });
+
+    it('declines, revokes, and respects blocks and capacity', async () => {
+      const tripId = await createTrip(body({ visibility: 'PRIVATE', maxParticipants: 2 }));
+      const toFrank = dataOf(TripInvitationSchema, await invite('alice', tripId, 'frank'));
+      const declined = dataOf(TripInvitationSchema, await respond('frank', toFrank.id, 'decline'));
+      expect(declined.status).toBe('DECLINED');
+      await http().get(`/api/v1/trips/${tripId}`).set(as('frank')).expect(404);
+
+      const toGina = dataOf(TripInvitationSchema, await invite('alice', tripId, 'gina'));
+      await respond('gina', toGina.id, 'revoke').expect(403);
+      expect(dataOf(TripInvitationSchema, await respond('alice', toGina.id, 'revoke')).status).toBe(
+        'REVOKED',
+      );
+      await http().get(`/api/v1/trips/${tripId}`).set(as('gina')).expect(404);
+
+      // Blocked either way looks like an unknown username.
+      await prisma().userBlock.create({ data: { blockerId: ids.hari, blockedId: ids.alice } });
+      await invite('alice', tripId, 'hari').expect(404);
+      await prisma().userBlock.deleteMany({ where: { blockerId: ids.hari } });
+
+      // Two open invitations for the last place: the second accept finds the trip full.
+      const a = dataOf(TripInvitationSchema, await invite('alice', tripId, 'hari'));
+      const b = dataOf(TripInvitationSchema, await invite('alice', tripId, 'gina'));
+      await respond('hari', a.id, 'accept').expect(200);
+      expect((await respond('gina', b.id, 'accept')).status).toBe(409);
+      expect(await activeCount(tripId)).toBe(2);
+    });
+
+    it('withdraws open invitations when the trip is cancelled', async () => {
+      const tripId = await createTrip(body({ visibility: 'PRIVATE' }));
+      const created = dataOf(TripInvitationSchema, await invite('alice', tripId, 'dave'));
+      await http()
+        .post(`/api/v1/trips/${tripId}/cancel`)
+        .set(as('alice'))
+        .send({ reason: 'Weather turned bad' })
+        .expect(200);
+      const row = await prisma().tripInvitation.findUniqueOrThrow({ where: { id: created.id } });
+      expect(row.status).toBe('REVOKED');
+      expect((await notifications('dave'))[0]?.type).toBe('TRIP_CANCELLED');
     });
   });
 });

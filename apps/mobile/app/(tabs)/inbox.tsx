@@ -1,11 +1,13 @@
-import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { type AppNotification } from '@voyago/shared';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { type AppNotification, type TripInvitation } from '@voyago/shared';
 import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import {
+  listMyInvitations,
   listNotifications,
   markAllNotificationsRead,
   markNotificationRead,
+  respondToInvitation,
 } from '../../src/api/participation';
 import { ComingSoon } from '../../src/components/ComingSoon';
 import { Button, FormMessage } from '../../src/components/Form';
@@ -28,8 +30,13 @@ export default function InboxScreen() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['notifications'] }),
   });
 
+  const invitations = useQuery({ queryKey: ['my-invitations'], queryFn: listMyInvitations });
+
   return (
     <Screen title="Inbox">
+      {invitations.data?.data.map((invitation) => (
+        <InvitationRow key={invitation.id} invitation={invitation} />
+      ))}
       {notifications.isPending ? <FormMessage tone="info">Loading…</FormMessage> : null}
       {notifications.isError ? (
         <>
@@ -70,6 +77,52 @@ export default function InboxScreen() {
   );
 }
 
+/** A pending trip invitation, answered right here. */
+function InvitationRow({ invitation }: { invitation: TripInvitation }) {
+  const { colors } = useTheme();
+  const queryClient = useQueryClient();
+  const answer = useMutation({
+    mutationFn: (verb: 'accept' | 'decline') => respondToInvitation(invitation.id, verb),
+    onSuccess: (_result, verb) => {
+      void queryClient.invalidateQueries({ queryKey: ['my-invitations'] });
+      void queryClient.invalidateQueries({ queryKey: ['trip', invitation.trip.id] });
+      if (verb === 'accept') router.push(`/trips/${invitation.trip.id}`);
+    },
+  });
+  return (
+    <View style={[styles.row, { backgroundColor: colors.surface, borderColor: colors.travel }]}>
+      <Text style={[styles.title, { color: colors.text }]}>
+        Invitation: {invitation.trip.title}
+      </Text>
+      <Text style={[styles.body, { color: colors.textMuted }]}>
+        {invitation.invitedBy ? `@${invitation.invitedBy.username} invited you. ` : ''}
+        Departs {new Date(invitation.trip.departureAt).toLocaleString()}.
+      </Text>
+      {answer.isError ? (
+        <FormMessage tone="error">
+          {answer.error instanceof Error ? answer.error.message : 'Something went wrong.'}
+        </FormMessage>
+      ) : null}
+      <Button
+        title="See the trip"
+        variant="link"
+        onPress={() => router.push(`/trips/${invitation.trip.id}`)}
+      />
+      <Button
+        title="Accept and join"
+        loading={answer.isPending && answer.variables === 'accept'}
+        onPress={() => answer.mutate('accept')}
+      />
+      <Button
+        title="Decline"
+        variant="secondary"
+        loading={answer.isPending && answer.variables === 'decline'}
+        onPress={() => answer.mutate('decline')}
+      />
+    </View>
+  );
+}
+
 function NotificationRow({ item }: { item: AppNotification }) {
   const { colors } = useTheme();
   const queryClient = useQueryClient();
@@ -80,10 +133,12 @@ function NotificationRow({ item }: { item: AppNotification }) {
         queryClient.invalidateQueries({ queryKey: ['notifications'] }),
       );
     }
-    const { tripId } = item.data;
-    if (!tripId) return;
-    if (item.type === 'JOIN_REQUEST_RECEIVED') router.push(`/trips/${tripId}/requests`);
-    else router.push(`/trips/${tripId}`);
+    const { tripId, communitySlug, username } = item.data;
+    if (item.type === 'NEW_FOLLOWER' && username) router.push(`/users/${username}`);
+    else if (item.type === 'JOIN_REQUEST_RECEIVED' && tripId) {
+      router.push(`/trips/${tripId}/requests`);
+    } else if (tripId) router.push(`/trips/${tripId}`);
+    else if (communitySlug) router.push(`/communities/${communitySlug}`);
   };
   return (
     <Pressable

@@ -123,14 +123,33 @@ export class UsersService {
       if (block) throw notFound;
     }
 
+    const [followerCount, followingCount, links] = await Promise.all([
+      this.prisma.follow.count({ where: { followeeId: user.id } }),
+      this.prisma.follow.count({ where: { followerId: user.id } }),
+      isSelf
+        ? []
+        : this.prisma.follow.findMany({
+            where: {
+              OR: [
+                { followerId: viewerId, followeeId: user.id },
+                { followerId: user.id, followeeId: viewerId },
+              ],
+            },
+            select: { followerId: true },
+          }),
+    ]);
+    const isFollowing = links.some((link) => link.followerId === viewerId);
     const visibility = user.preferences?.profileVisibility ?? 'PUBLIC';
-    let full = isSelf || visibility === 'PUBLIC';
-    if (!full && visibility === 'FOLLOWERS') {
-      full =
-        (await this.prisma.follow.count({
-          where: { followerId: viewerId, followeeId: user.id },
-        })) > 0;
-    }
+    const full = isSelf || visibility === 'PUBLIC' || (visibility === 'FOLLOWERS' && isFollowing);
+    // Whether they follow you back is shown only where their profile is visible to you.
+    const followsYou = full && links.some((link) => link.followerId === user.id);
+    const follow = {
+      followerCount,
+      followingCount,
+      isFollowing,
+      followsYou,
+      mutual: isFollowing && followsYou,
+    };
 
     const base = {
       id: user.id,
@@ -139,6 +158,7 @@ export class UsersService {
       avatarUrl: null,
       verification: { email: user.emailVerifiedAt !== null, phone: user.phoneVerifiedAt !== null },
       memberSince: user.createdAt.toISOString(),
+      follow,
     };
     if (!full) {
       return {

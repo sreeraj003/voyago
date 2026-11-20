@@ -49,6 +49,7 @@ type Tx = Prisma.TransactionClient;
 
 const tripInclude = {
   organiser: { select: { id: true, username: true, displayName: true } },
+  community: { select: { id: true, slug: true, name: true } },
 } as const;
 
 /** Participant statuses that count as being on the trip (now, or when it finished). */
@@ -88,6 +89,7 @@ export class TripsService {
     assertNoIssues([departureIssue(input.departureAt)]);
     if (input.coverImageId)
       await this.cloudinary.assertOwnUploadedCover(user.id, input.coverImageId);
+    if (input.communityId) await this.assertCommunityMember(user.id, input.communityId);
     const id = await this.prisma.$transaction(async (tx) => {
       const trip = await tx.trip.create({
         data: {
@@ -112,6 +114,7 @@ export class TripsService {
           minEngineCc: input.minEngineCc ?? null,
           bikeCategories: input.bikeCategories ?? [],
           visibility: input.visibility ?? 'PUBLIC',
+          communityId: input.communityId ?? null,
           approvalRequired: input.approvalRequired ?? true,
           coverImageKey: input.coverImageId ?? null,
           // The organiser is the first participant.
@@ -185,12 +188,17 @@ export class TripsService {
         maxParticipants: input.maxParticipants ?? trip.maxParticipants,
         minEngineCc: input.minEngineCc !== undefined ? input.minEngineCc : trip.minEngineCc,
         bikeCategories: input.bikeCategories ?? trip.bikeCategories,
+        visibility: input.visibility ?? trip.visibility,
+        communityId: input.communityId !== undefined ? input.communityId : trip.communityId,
         stops: input.stops,
       }),
     );
     assertNoIssues(issues);
     if (input.coverImageId)
       await this.cloudinary.assertOwnUploadedCover(user.id, input.coverImageId);
+    if (input.communityId && input.communityId !== trip.communityId) {
+      await this.assertCommunityMember(user.id, input.communityId);
+    }
 
     await this.prisma.$transaction(async (tx) => {
       const { origin, destination, stops, departureAt, returnAt, coverImageId, ...scalars } = input;
@@ -367,10 +375,10 @@ export class TripsService {
       this.countParticipants(ids),
       this.prisma.tripParticipant.findMany({
         where: { tripId: { in: ids }, userId: user.id },
-        select: { tripId: true, status: true },
+        select: { tripId: true, status: true, role: true },
       }),
     ]);
-    const statusOf = new Map(mine.map((row) => [row.tripId, row.status]));
+    const mineOf = new Map(mine.map((row) => [row.tripId, row]));
     return {
       data: page.data.map((trip, index) =>
         toTripView(
@@ -380,7 +388,10 @@ export class TripsService {
             user,
             isParticipant: true,
             blocked: false,
-            participantStatus: statusOf.get(trip.id) ?? null,
+            participantStatus: mineOf.get(trip.id)?.status ?? null,
+            isCoOrganiser:
+              mineOf.get(trip.id)?.status === 'ACTIVE' &&
+              mineOf.get(trip.id)?.role === 'CO_ORGANISER',
           },
           counts.get(trip.id) ?? 0,
           this.cloudinary.coverUrl(trip.coverImageKey),
@@ -433,38 +444,59 @@ export class TripsService {
     });
     const notFound = new NotFoundException('Trip not found');
     if (!trip) throw notFound;
-    const manages = trip.organiserId === user.id || isStaff(user);
-    const [participant, block, counts, joinRequest, pendingRequestCount] = await Promise.all([
-      this.prisma.tripParticipant.findUnique({
-        where: { tripId_userId: { tripId: id, userId: user.id } },
-        select: { status: true },
-      }),
-      trip.organiserId === user.id
-        ? null
-        : this.prisma.userBlock.findFirst({
-            where: {
-              OR: [
-                { blockerId: trip.organiserId, blockedId: user.id },
-                { blockerId: user.id, blockedId: trip.organiserId },
-              ],
-            },
-            select: { blockerId: true },
-          }),
-      this.countParticipants([id]),
-      this.prisma.tripJoinRequest.findFirst({
-        where: { tripId: id, userId: user.id },
-        orderBy: { createdAt: 'desc' },
-        select: { id: true, status: true },
-      }),
-      manages ? this.prisma.tripJoinRequest.count({ where: { tripId: id, status: 'PENDING' } }) : 0,
-    ]);
+    const [participant, block, counts, joinRequest, invitation, communityMember] =
+      await Promise.all([
+        this.prisma.tripParticipant.findUnique({
+          where: { tripId_userId: { tripId: id, userId: user.id } },
+          select: { status: true, role: true },
+        }),
+        trip.organiserId === user.id
+          ? null
+          : this.prisma.userBlock.findFirst({
+              where: {
+                OR: [
+                  { blockerId: trip.organiserId, blockedId: user.id },
+                  { blockerId: user.id, blockedId: trip.organiserId },
+                ],
+              },
+              select: { blockerId: true },
+            }),
+        this.countParticipants([id]),
+        this.prisma.tripJoinRequest.findFirst({
+          where: { tripId: id, userId: user.id },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, status: true },
+        }),
+        this.prisma.tripInvitation.findFirst({
+          where: { tripId: id, inviteeId: user.id, status: 'PENDING' },
+          select: { id: true },
+        }),
+        trip.visibility === 'COMMUNITY' && trip.communityId
+          ? this.prisma.communityMember.findFirst({
+              where: {
+                communityId: trip.communityId,
+                userId: user.id,
+                status: 'ACTIVE',
+                community: { deletedAt: null },
+              },
+              select: { userId: true },
+            })
+          : null,
+      ]);
+    const isCoOrganiser = participant?.status === 'ACTIVE' && participant.role === 'CO_ORGANISER';
+    const manages = trip.organiserId === user.id || isCoOrganiser || isStaff(user);
     const viewer: ViewerContext = {
       user,
       isParticipant: participant !== null && ON_TRIP.includes(participant.status),
       blocked: block !== null,
       participantStatus: participant?.status ?? null,
       joinRequest,
-      pendingRequestCount,
+      isCoOrganiser,
+      invitationId: invitation?.id ?? null,
+      communityMember: communityMember !== null,
+      pendingRequestCount: manages
+        ? await this.prisma.tripJoinRequest.count({ where: { tripId: id, status: 'PENDING' } })
+        : 0,
     };
     if (!canView(trip, viewer)) throw notFound;
     return { trip: trip as TripRecord, viewer, participantCount: counts.get(id) ?? 0 };
@@ -478,6 +510,22 @@ export class TripsService {
     }
     this.assertCommunity(loaded.trip);
     return loaded;
+  }
+
+  /** Trips can only be posted in a community you are an active member of. */
+  private async assertCommunityMember(userId: string, communityId: string): Promise<void> {
+    const member = await this.prisma.communityMember.findFirst({
+      where: { communityId, userId, status: 'ACTIVE', community: { deletedAt: null } },
+      select: { userId: true },
+    });
+    if (!member) {
+      throw new BadRequestException({
+        message: 'Validation failed',
+        details: [
+          { path: 'communityId', message: 'Join this community before posting trips in it' },
+        ],
+      });
+    }
   }
 
   private assertCommunity(trip: TripRecord): void {
@@ -612,21 +660,31 @@ export async function syncCapacityStatus(tx: Tx, tripId: string): Promise<void> 
 }
 
 /**
- * Closes pending join requests when a trip stops taking people (cancelled, started, expired).
- * Returns the requesters, so they can be told.
+ * Closes pending join requests and invitations when a trip stops taking people (cancelled,
+ * started, expired). Returns the people affected, so they can be told.
  */
 export async function closePendingRequests(tx: Tx, tripId: string): Promise<string[]> {
-  const pending = await tx.tripJoinRequest.findMany({
-    where: { tripId, status: 'PENDING' },
-    select: { userId: true },
-  });
+  const [pending, invited] = await Promise.all([
+    tx.tripJoinRequest.findMany({ where: { tripId, status: 'PENDING' }, select: { userId: true } }),
+    tx.tripInvitation.findMany({
+      where: { tripId, status: 'PENDING' },
+      select: { inviteeId: true },
+    }),
+  ]);
+  const now = new Date();
   if (pending.length > 0) {
     await tx.tripJoinRequest.updateMany({
       where: { tripId, status: 'PENDING' },
-      data: { status: 'CANCELLED', decidedAt: new Date() },
+      data: { status: 'CANCELLED', decidedAt: now },
     });
   }
-  return pending.map((row) => row.userId);
+  if (invited.length > 0) {
+    await tx.tripInvitation.updateMany({
+      where: { tripId, status: 'PENDING' },
+      data: { status: 'REVOKED', respondedAt: now },
+    });
+  }
+  return [...pending.map((row) => row.userId), ...invited.map((row) => row.inviteeId)];
 }
 
 const CHANGE_NAMES: Record<(typeof ANNOUNCED_FIELDS)[number], string> = {

@@ -198,6 +198,7 @@ async function main(): Promise<void> {
           slug: 'dev-bengaluru-weekend-riders',
           name: 'Bengaluru Weekend Riders (dev)',
           description: 'Development sample community.',
+          category: 'RIDING_CLUB',
           mode: 'RIDE',
           city: 'Bengaluru',
           createdById: USERS.asha,

@@ -1,5 +1,5 @@
 import { type AuthUser } from '../common/auth/current-user.decorator.js';
-import { allowedActions, canView, type TripRecord } from './trip-view.js';
+import { allowedActions, canView, type TripRecord, type ViewerContext } from './trip-view.js';
 
 const organiser: AuthUser = { id: 'o', role: 'USER', sessionFamilyId: 's' };
 const member: AuthUser = { id: 'm', role: 'USER', sessionFamilyId: 's' };
@@ -16,7 +16,7 @@ const trip = (overrides: Partial<TripRecord> = {}) =>
     ...overrides,
   }) as TripRecord;
 
-const viewer = (user: AuthUser, extra: { isParticipant?: boolean; blocked?: boolean } = {}) => ({
+const viewer = (user: AuthUser, extra: Partial<ViewerContext> = {}): ViewerContext => ({
   user,
   isParticipant: false,
   blocked: false,
@@ -44,18 +44,40 @@ describe('allowedActions', () => {
       'delete',
       'cancel',
     ]);
-    expect(allowedActions(trip(), organiser)).toEqual(['edit', 'cancel']);
+    expect(allowedActions(trip(), organiser)).toEqual(['edit', 'manage_people', 'cancel']);
     expect(allowedActions(trip({ departureAt: new Date(Date.now() + HOUR) }), organiser)).toEqual([
       'edit',
       'start',
+      'manage_people',
       'cancel',
     ]);
     expect(allowedActions(trip({ status: 'IN_PROGRESS' }), organiser)).toEqual([
       'edit',
       'complete',
+      'manage_people',
       'cancel',
     ]);
     expect(allowedActions(trip({ status: 'CANCELLED' }), organiser)).toEqual([]);
+  });
+
+  it('gives co-organisers people management only, and keeps private trips invite-only', () => {
+    const none = { participantStatus: 'ACTIVE' as const, hasPendingRequest: false };
+    expect(allowedActions(trip(), member, { ...none, isCoOrganiser: true })).toEqual([
+      'manage_people',
+      'leave',
+    ]);
+    expect(allowedActions(trip({ visibility: 'PRIVATE' }), member)).toEqual([]);
+  });
+
+  it('lets invitees see private trips and members see community trips', () => {
+    const privateTrip = trip({ visibility: 'PRIVATE' });
+    expect(canView(privateTrip, viewer(member, { invitationId: 'x' }))).toBe(true);
+    const communityTrip = trip({ visibility: 'COMMUNITY' });
+    expect(canView(communityTrip, viewer(member))).toBe(false);
+    expect(canView(communityTrip, viewer(member, { communityMember: true }))).toBe(true);
+    expect(canView(communityTrip, viewer(member, { communityMember: true, blocked: true }))).toBe(
+      false,
+    );
   });
 
   it('lets members join open trips and leave ones they are on', () => {

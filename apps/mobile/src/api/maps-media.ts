@@ -4,6 +4,7 @@ import {
   type Place,
   PlaceSchema,
   PlaceSuggestionSchema,
+  type UploadKind,
   type UploadSignature,
   UploadSignatureSchema,
 } from '@voyago/shared';
@@ -26,8 +27,12 @@ export const getPlace = (placeId: string, sessionToken: string): Promise<Place> 
     },
   );
 
-export const getCoverSignature = (): Promise<UploadSignature> =>
-  apiRequest('/uploads/cover-signature', { method: 'POST', schema: UploadSignatureSchema });
+export const getUploadSignature = (kind: UploadKind): Promise<UploadSignature> =>
+  apiRequest('/uploads/signature', {
+    method: 'POST',
+    body: { kind },
+    schema: UploadSignatureSchema,
+  });
 
 /** A new random token per search session (Google groups keystrokes + selection for billing). */
 export function newSessionToken(): string {
@@ -35,15 +40,23 @@ export function newSessionToken(): string {
   return Array.from({ length: 24 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
+type PickedImage = { uri: string; mimeType?: string | null; fileSize?: number | null };
+
+/** A trip cover. */
+export const uploadCover = (image: PickedImage, fetchImpl: typeof fetch = fetch) =>
+  uploadImage(image, 'trip-cover', fetchImpl);
+
 /**
  * Uploads a picked image straight to Cloudinary with a signature from the API, then returns
- * the image id to save on the trip. The file never passes through the Voyago API.
+ * the image id to save (trip cover, community cover or post photo). The file never passes
+ * through the Voyago API.
  */
-export async function uploadCover(
-  image: { uri: string; mimeType?: string | null; fileSize?: number | null },
+export async function uploadImage(
+  image: PickedImage,
+  kind: UploadKind,
   fetchImpl: typeof fetch = fetch,
 ): Promise<string> {
-  const signature = await getCoverSignature();
+  const signature = await getUploadSignature(kind);
   if (image.fileSize && image.fileSize > signature.maxBytes) {
     throw new Error(`Choose an image under ${Math.round(signature.maxBytes / 1024 / 1024)} MB`);
   }

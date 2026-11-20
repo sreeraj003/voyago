@@ -180,7 +180,44 @@ enum CommunityRole {
 enum MembershipStatus {
   ACTIVE
   PENDING
+  /// Left of their own accord; may join again.
+  LEFT
+  /// Removed by a moderator; may ask again (unless BANNED).
+  REMOVED
   BANNED
+}
+
+enum CommunityCategory {
+  RIDING_CLUB
+  TOURING
+  TREKKING
+  BACKPACKING
+  ROAD_TRIPS
+  PHOTOGRAPHY
+  OTHER
+}
+
+enum TripInvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  REVOKED
+}
+
+enum PostType {
+  /// A member's write-up of a completed trip they were on.
+  TRIP_RECAP
+  /// Destination photos.
+  PHOTO
+  /// From a community's owner, admins or moderators.
+  ANNOUNCEMENT
+}
+
+enum PostVisibility {
+  PUBLIC
+  FOLLOWERS
+  /// Members of the post's community only.
+  COMMUNITY
 }
 
 enum ConversationType {
@@ -210,6 +247,8 @@ enum NotificationType {
   NEW_FOLLOWER
   COMMUNITY_INVITE
   SAFETY_ALERT
+  TRIP_INVITE
+  COMMUNITY_UPDATE
   PARTICIPANT_REMOVED
   TRIP_REMINDER
   BOOKING_UPDATE
@@ -224,6 +263,7 @@ enum ReportTargetType {
   COMMUNITY
   REVIEW
   COMMERCIAL_PACKAGE
+  POST
 }
 
 enum ReportReason {
@@ -355,6 +395,9 @@ model User {
   notifications       Notification[]
   reviewsWritten      Review[]             @relation("Reviewer")
   reviewsReceived     Review[]             @relation("Reviewee")
+  tripInvitations     TripInvitation[]     @relation("TripInvitee")
+  sentTripInvitations TripInvitation[]     @relation("TripInviter")
+  posts               Post[]               @relation("PostAuthor")
   reportsFiled        Report[]             @relation("Reporter")
   reportsAgainst      Report[]             @relation("ReportedUser")
   reportsAssigned     Report[]             @relation("ReportAssignee")
@@ -582,6 +625,8 @@ model Trip {
   stops             TripStop[]
   participants      TripParticipant[]
   joinRequests      TripJoinRequest[]
+  invitations       TripInvitation[]
+  posts             Post[]
   conversation      Conversation?
   reviews           Review[]
   bookings          Booking[]
@@ -675,6 +720,7 @@ model Community {
   mode          TripMode?
   visibility    CommunityVisibility @default(PUBLIC)
   joinPolicy    CommunityJoinPolicy @default(OPEN) @map("join_policy")
+  category      CommunityCategory   @default(OTHER)
   city          String?             @db.VarChar(80)
   coverImageKey String?             @map("cover_image_key")
   createdById   String              @map("created_by_id") @db.Uuid
@@ -685,6 +731,7 @@ model Community {
   createdBy    User              @relation("CommunityCreator", fields: [createdById], references: [id], onDelete: Restrict)
   members      CommunityMember[]
   trips        Trip[]
+  posts        Post[]
   conversation Conversation?
 
   @@index([city])
@@ -697,6 +744,8 @@ model CommunityMember {
   userId      String           @map("user_id") @db.Uuid
   role        CommunityRole    @default(MEMBER)
   status      MembershipStatus @default(ACTIVE)
+  /// Note sent with a request to join.
+  message     String?          @db.VarChar(500)
   joinedAt    DateTime         @default(now()) @map("joined_at") @db.Timestamptz(3)
   updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
 
@@ -705,6 +754,7 @@ model CommunityMember {
 
   @@id([communityId, userId])
   @@index([userId])
+  @@index([communityId, status])
   @@map("community_members")
 }
 
@@ -719,6 +769,54 @@ model Follow {
   @@id([followerId, followeeId])
   @@index([followeeId])
   @@map("follows")
+}
+
+/// An invitation to a trip, needed to join PRIVATE trips. Sent by the organiser or a co-organiser.
+model TripInvitation {
+  id          String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tripId      String               @map("trip_id") @db.Uuid
+  inviteeId   String               @map("invitee_id") @db.Uuid
+  invitedById String?              @map("invited_by_id") @db.Uuid
+  status      TripInvitationStatus @default(PENDING)
+  respondedAt DateTime?            @map("responded_at") @db.Timestamptz(3)
+  createdAt   DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  trip      Trip  @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  invitee   User  @relation("TripInvitee", fields: [inviteeId], references: [id], onDelete: Cascade)
+  invitedBy User? @relation("TripInviter", fields: [invitedById], references: [id], onDelete: SetNull)
+
+  // At most one PENDING invitation per person and trip: partial unique index in the migration.
+  @@index([tripId, status])
+  @@index([inviteeId, status])
+  @@map("trip_invitations")
+}
+
+/// Feed posts: trip recaps, destination photos and community announcements.
+model Post {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  authorId    String         @map("author_id") @db.Uuid
+  type        PostType
+  visibility  PostVisibility @default(PUBLIC)
+  communityId String?        @map("community_id") @db.Uuid
+  tripId      String?        @map("trip_id") @db.Uuid
+  body        String?        @db.VarChar(2000)
+  /// Cloudinary public ids (post-photos folder), at most 6.
+  imageKeys   String[]       @default([]) @map("image_keys")
+  /// Place shown with photos, e.g. "Kudremukh". A name, never coordinates.
+  placeName   String?        @map("place_name") @db.VarChar(160)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt   DateTime?      @map("deleted_at") @db.Timestamptz(3)
+
+  author    User       @relation("PostAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  community Community? @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  trip      Trip?      @relation(fields: [tripId], references: [id], onDelete: SetNull)
+
+  @@index([authorId, createdAt(sort: Desc)])
+  @@index([communityId, createdAt(sort: Desc)])
+  @@index([createdAt(sort: Desc)])
+  @@map("posts")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

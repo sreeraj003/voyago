@@ -260,10 +260,18 @@ export function TripFormWizard({
             value={form.visibility}
             options={[
               { value: 'PUBLIC', label: 'Everyone' },
+              ...(form.community
+                ? [{ value: 'COMMUNITY' as const, label: `${form.community.name} members` }]
+                : []),
               { value: 'PRIVATE', label: 'Invited only' },
             ]}
             onChange={set('visibility')}
           />
+          {form.community ? (
+            <Text style={[styles.caption, { color: colors.textMuted }]}>
+              Posted in {form.community.name}.
+            </Text>
+          ) : null}
           <Choice
             label="Joining"
             value={form.approvalRequired ? 'approve' : 'open'}
@@ -372,7 +380,14 @@ function Preview({ form, note }: { form: TripForm; note: string }) {
       {line('Departs', new Date(trip.departureAt).toLocaleString())}
       {line('Returns', trip.returnAt ? new Date(trip.returnAt).toLocaleString() : null)}
       {line('Group', `${trip.minParticipants ?? 1} to ${trip.maxParticipants} people`)}
-      {line('Visibility', trip.visibility === 'PRIVATE' ? 'Invited only' : 'Everyone')}
+      {line(
+        'Visibility',
+        trip.visibility === 'PRIVATE'
+          ? 'Invited only'
+          : trip.visibility === 'COMMUNITY'
+            ? 'Community members'
+            : 'Everyone',
+      )}
       {line('Estimated cost per person', formatRupees(trip.estimatedBudgetPaise ?? null))}
       <Text style={[styles.caption, { color: colors.textMuted }]}>{note}</Text>
     </View>

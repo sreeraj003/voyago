@@ -51,6 +51,21 @@ export const UploadSignatureSchema = z.object({
 });
 export type UploadSignature = z.infer<typeof UploadSignatureSchema>;
 
+/** What an upload is for; each kind has its own folder. */
+export const UploadKindSchema = z.enum(['trip-cover', 'community-cover', 'post-photo']);
+export type UploadKind = z.infer<typeof UploadKindSchema>;
+export const UploadSignatureRequestSchema = z.object({ kind: UploadKindSchema });
+
+const imageId = (folder: string) =>
+  z
+    .string()
+    .regex(
+      new RegExp(`^[a-z0-9_-]{1,40}/${folder}/[0-9a-f-]{36}/[0-9a-f-]{36}$`),
+      'Upload the image again',
+    );
+export const CommunityCoverIdSchema = imageId('community-covers');
+export const PostPhotoIdSchema = imageId('post-photos');
+
 /** `<folder>/trip-covers/<user id>/<image uuid>`; the API also checks folder and owner. */
 export const CoverImageIdSchema = z
   .string()
