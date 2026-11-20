@@ -82,6 +82,7 @@ async function createTrip(
 }
 
 async function createVerifiedPackage(tx: Tx, ownerId: string) {
+  const reviewer = await createUser(tx);
   const operator = await tx.commercialOperator.create({
     data: {
       ownerUserId: ownerId,
@@ -90,6 +91,7 @@ async function createVerifiedPackage(tx: Tx, ownerId: string) {
       displayName: 'Test Operator',
       verificationStatus: 'VERIFIED',
       verifiedAt: new Date(),
+      verifiedById: reviewer.id,
     },
   });
   return tx.commercialPackage.create({
@@ -365,6 +367,41 @@ describe('community trips stay separate from commercial bookings', () => {
         },
       });
     }, 'Bookings can only reference COMMERCIAL_PAID trips');
+  });
+
+  it('rejects a verified operator without a recorded reviewer', async () => {
+    await expectDbError(async (tx) => {
+      const user = await createUser(tx);
+      await tx.commercialOperator.create({
+        data: {
+          ownerUserId: user.id,
+          slug: `op-${unique()}`,
+          legalName: 'X',
+          displayName: 'X',
+          verificationStatus: 'VERIFIED',
+          verifiedAt: new Date(),
+        },
+      });
+    }, 'commercial_operators_verified_by');
+  });
+
+  it('rejects a hidden trip without a reason and a resolved report without a time', async () => {
+    await expectDbError(async (tx) => {
+      const user = await createUser(tx);
+      await createTrip(tx, user.id, { hiddenAt: new Date() });
+    }, 'trips_hidden_reason');
+    await expectDbError(async (tx) => {
+      const user = await createUser(tx);
+      await tx.report.create({
+        data: {
+          reporterId: user.id,
+          targetType: 'USER',
+          targetId: user.id,
+          reason: 'SPAM',
+          status: 'DISMISSED',
+        },
+      });
+    }, 'reports_resolution');
   });
 
   it('rejects publishing a package from an unverified operator', async () => {

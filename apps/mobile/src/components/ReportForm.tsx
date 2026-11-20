@@ -1,6 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
+import { type ReportTargetType } from '@voyago/shared';
 import { report } from '../api/social';
 import { useFormError } from '../auth/use-form-error';
 import { REPORT_REASON_OPTIONS } from '../trips/labels';
@@ -16,7 +17,7 @@ export function ReportForm({
   targetId,
   label = 'Report',
 }: {
-  targetType: 'USER' | 'TRIP' | 'COMMUNITY' | 'POST';
+  targetType: ReportTargetType;
   targetId: string;
   label?: string;
 }) {

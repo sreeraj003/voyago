@@ -88,9 +88,10 @@ erDiagram
 | Messaging  | `conversations`, `conversation_members`, `messages` | Trip group chats, community chats, direct messages.                                              |
 |            | `notifications`                                     | In-app notification inbox.                                                                       |
 | Safety     | `reviews`                                           | Post-trip review of one participant by another (usually of the organiser).                       |
-|            | `reports`                                           | User reports of people or content, with a moderation workflow.                                   |
+|            | `reports`                                           | User reports of people, trips, posts or messages, with severity and a moderation workflow.       |
 |            | `location_sessions`                                 | Opt-in live location sessions, max 24 hours. Coordinates are kept in Redis with a TTL, not here. |
 | Commercial | `commercial_operators`                              | Businesses; must be `VERIFIED` to sell.                                                          |
+|            | `operator_documents`                                | Verification documents (private files, reviewed by staff).                                       |
 |            | `commercial_packages`                               | Paid experiences. Never passenger transport.                                                     |
 |            | `bookings`, `payments`                              | Purchases and gateway payment records (no card data).                                            |
 |            | `subscription_plans`, `subscriptions`               | Explorer Pro / Organiser Pro.                                                                    |
@@ -153,6 +154,10 @@ or passenger transport entity in the schema.
 | `payments.idempotency_key` unique; `(provider, provider_payment_id)` unique     | Retries never double-charge; gateway ids are unique.                                          |
 | `subscriptions_one_live_per_user` (partial unique)                              | At most one trialing/active/past-due subscription per user.                                   |
 | `audit_logs_append_only` (trigger)                                              | Audit rows cannot be edited or deleted (except the FK nulling `actor_id` on account erasure). |
+| `reports_resolution`, `reports_evidence_refs_count`                             | Resolved reports carry a resolution time; at most 20 evidence references.                     |
+| `trips_hidden_reason`                                                           | A hidden trip always records why.                                                             |
+| `commercial_operators_verified_by`                                              | Verification is a person's decision: who and when are always recorded.                        |
+| `operator_documents_storage_key_format`, `_format`, `_review`                   | Private files in the operator-docs folder, known formats, reviewed ⇔ review time.             |
 
 ### Delete behaviour
 
@@ -223,8 +228,10 @@ pnpm --filter @voyago/api test:e2e                         # constraint + smoke 
 
 ## Seed data
 
-`apps/api/prisma/seed.ts` loads development-only sample data: four users (`dev_asha`, `dev_vikram`,
-`dev_meera`, `dev_rahul`, all `@example.com`), a riding community, two published community trips
+`apps/api/prisma/seed.ts` loads development-only sample data: four members (`dev_asha`, `dev_vikram`,
+`dev_meera`, `dev_rahul`, all `@example.com`), four staff accounts for the admin app (`dev_admin`
+super admin, `dev_mod` moderator, `dev_support`, `dev_ops`), two sample reports in the moderation
+queue, a riding community, two published community trips
 (Nandi Hills ride, Coorg weekend), a draft ride, a sample verified operator with one package and
 departure, a trip chat, a join request and the two proposed subscription plans. Every row has a
 fixed id beginning `5eed0000`, so re-running changes nothing. The `dev_*` accounts have email verified and the password `voyago-dev-password` (override with
@@ -253,6 +260,28 @@ fixed id beginning `5eed0000`, so re-running changes nothing. The `dev_*` accoun
   trips have `started_at`, title not blank, duration range.
 - Route data (`trips.origin/destination`, `trip_stops`) is planning data only. Live location is a
   separate store (Redis, milestone 11) and never written to these tables.
+
+## Milestone 10 changes (`20261122090000_admin_moderation`)
+
+- `UserRole`: `ADMIN` is renamed `SUPER_ADMIN` (existing admins keep full access) and `SUPPORT`
+  and `OPERATIONS` are added, next to `USER` and `MODERATOR`. What each role may do is defined in
+  `packages/shared/src/admin.ts` and enforced by the API.
+- `reports`: `severity` (`ReportSeverity`: `LOW`, `MEDIUM`, `HIGH`, `CRITICAL`; existing rows
+  backfilled from their reason) and `evidence_refs` (moderator-added references, at most 20).
+  `reports_resolution`: resolved reports have `resolved_at`, unresolved ones don't (backfilled).
+  Partial index `reports_queue_idx` (severity, age) over open and in-review reports.
+- `trips`: `hidden_at`, `hidden_reason`, `hidden_by_id` (moderator hide). `trips_hidden_reason`
+  keeps the time and reason together; partial index `trips_hidden_idx`. Discovery, feeds and
+  community lists skip hidden trips.
+- `commercial_operators`: `verification_note`, `submitted_at`, and
+  `commercial_operators_verified_by`: a verified operator always records who verified it and when
+  (operators marked verified without that go back to `PENDING`).
+- New `operator_documents` (operator, kind, private Cloudinary key in the `operator-docs` folder,
+  file format, file name, `PENDING`/`ACCEPTED`/`REJECTED`, review note, reviewer, review time).
+  Files are opened only through five-minute signed links, each audited. Cascades with the
+  operator.
+- `audit_logs` was already append-only; every admin action writes one row in the same transaction
+  as the change.
 
 ## Milestone 09 changes (`20261121090000_chat_notifications`)
 

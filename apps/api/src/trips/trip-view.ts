@@ -1,6 +1,7 @@
 import {
   canTransition,
   type GeoPoint,
+  hasPermission,
   type JoinRequestStatus,
   type ParticipantStatus,
   type MotorcycleCategory,
@@ -47,6 +48,8 @@ export interface TripRecord {
   completedAt: Date | null;
   cancelledAt: Date | null;
   cancellationReason: string | null;
+  hiddenAt: Date | null;
+  hiddenReason: string | null;
   createdAt: Date;
   updatedAt: Date;
   organiser: { id: string; username: string; displayName: string };
@@ -98,16 +101,19 @@ export function canManagePeople(trip: TripRecord, viewer: ViewerContext): boolea
   );
 }
 
-export const isStaff = (user: AuthUser) => user.role === 'ADMIN' || user.role === 'MODERATOR';
+/** Staff who moderate content (super admins and moderators); support and operations do not. */
+export const isStaff = (user: AuthUser) => hasPermission(user.role, 'content.moderate');
 
 /**
  * Who may see a trip: drafts only their organiser (and staff); private trips participants and
  * people invited; community trips that community's members; nobody on either side of a block.
+ * A trip hidden by moderators stays visible only to its organiser and people on it.
  * Anyone else gets 404, so hidden trips are not confirmed.
  */
 export function canView(trip: TripRecord, viewer: ViewerContext): boolean {
   if (isStaff(viewer.user) || trip.organiserId === viewer.user.id) return true;
   if (viewer.blocked) return false;
+  if (trip.hiddenAt) return viewer.isParticipant;
   if (trip.status === 'DRAFT') return false;
   if (trip.visibility === 'PUBLIC' || viewer.isParticipant || viewer.invitationId) return true;
   return trip.visibility === 'COMMUNITY' && viewer.communityMember === true;
@@ -236,6 +242,8 @@ export function toTripView(
     completedAt: iso(trip.completedAt),
     cancelledAt: iso(trip.cancelledAt),
     cancellationReason: trip.cancellationReason,
+    // Only the organiser (and staff) learn that moderators hid the trip, and why.
+    hiddenReason: isOrganiser || isStaff(viewer.user) ? trip.hiddenReason : null,
     createdAt: trip.createdAt.toISOString(),
     updatedAt: trip.updatedAt.toISOString(),
     viewer: {

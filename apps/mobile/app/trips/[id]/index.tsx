@@ -114,6 +114,7 @@ function TripDetail({ trip }: { trip: Trip }) {
           />
         ) : null}
         {line('Cancelled because', trip.cancellationReason)}
+        {line('Hidden from discovery by Voyago moderators', trip.hiddenReason)}
       </View>
       <Membership trip={trip} />
       <TripActions trip={trip} />

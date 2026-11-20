@@ -9,5 +9,6 @@ import { ChatService } from './chat.service.js';
   imports: [AuthModule, IntegrationsModule],
   controllers: [ChatController],
   providers: [ChatService, ChatGateway],
+  exports: [ChatService],
 })
 export class ChatModule {}

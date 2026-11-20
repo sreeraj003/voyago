@@ -286,6 +286,8 @@ export const TripSchema = z.object({
   completedAt: z.string().nullable(),
   cancelledAt: z.string().nullable(),
   cancellationReason: z.string().nullable(),
+  /** Set when Voyago moderators hid the trip from discovery; shown to the organiser only. */
+  hiddenReason: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
   viewer: z.object({

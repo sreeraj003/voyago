@@ -308,20 +308,25 @@ everyone else). Community trips never appear in public discovery.
 
 ### Social
 
-| Method | Path                         | Auth   | Success | Description                                                                                                                   |
-| ------ | ---------------------------- | ------ | ------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| POST   | `/users/:username/follow`    | Bearer | 204     | Follow (no-op if already). The member is notified once.                                                                       |
-| DELETE | `/users/:username/follow`    | Bearer | 204     | Unfollow.                                                                                                                     |
-| GET    | `/users/:username/followers` | Bearer | 200     | `{ user, since, isFollowing }[]`, cursor. 403 unless their profile is fully visible.                                          |
-| GET    | `/users/:username/following` | Bearer | 200     | Same rules as followers.                                                                                                      |
-| POST   | `/users/:username/block`     | Bearer | 204     | Free and always available. Removes follows both ways and open invitations between you.                                        |
-| DELETE | `/users/:username/block`     | Bearer | 204     | Unblock.                                                                                                                      |
-| GET    | `/me/blocks`                 | Bearer | 200     | People I blocked.                                                                                                             |
-| POST   | `/reports`                   | Bearer | 201     | `{ targetType: USER \| TRIP \| COMMUNITY \| POST, targetId, reason, details? }`. A repeat while open returns the same report. |
+| Method | Path                         | Auth   | Success | Description                                                                                                                                                                          |
+| ------ | ---------------------------- | ------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| POST   | `/users/:username/follow`    | Bearer | 204     | Follow (no-op if already). The member is notified once.                                                                                                                              |
+| DELETE | `/users/:username/follow`    | Bearer | 204     | Unfollow.                                                                                                                                                                            |
+| GET    | `/users/:username/followers` | Bearer | 200     | `{ user, since, isFollowing }[]`, cursor. 403 unless their profile is fully visible.                                                                                                 |
+| GET    | `/users/:username/following` | Bearer | 200     | Same rules as followers.                                                                                                                                                             |
+| POST   | `/users/:username/block`     | Bearer | 204     | Free and always available. Removes follows both ways and open invitations between you.                                                                                               |
+| DELETE | `/users/:username/block`     | Bearer | 204     | Unblock.                                                                                                                                                                             |
+| GET    | `/me/blocks`                 | Bearer | 200     | People I blocked.                                                                                                                                                                    |
+| POST   | `/reports`                   | Bearer | 201     | `{ targetType: USER \| TRIP \| COMMUNITY \| POST \| MESSAGE, targetId, reason, details? }`. A repeat while unresolved returns the same report. Messages only by people in that chat. |
 
 Public profiles gain `follow { followerCount, followingCount, isFollowing, followsYou, mutual }`.
 `followsYou` (and so `mutual`) is shown only when their profile is visible to you. A block in
 either direction makes profiles, trips, posts and feed items disappear both ways (404).
+
+Reports start at a severity set by their reason (unsafe behaviour, scams and illegal transport are
+`HIGH`; harassment, fake profiles and inappropriate content `MEDIUM`; spam and other `LOW`). When a
+moderator resolves a report the reporter gets a `SYSTEM` notification saying it was reviewed,
+never what happened to the other person.
 
 ### Posts and feed
 
@@ -335,6 +340,69 @@ Post `visibility` is `PUBLIC`, `FOLLOWERS` or `COMMUNITY` (needs `communityId`).
 private community are always `COMMUNITY`. A post names its trip only if the trip is public.
 Places are names, never coordinates; the app strips photo metadata before upload. The feed is
 plain reverse-chronological with no ranking; items carry `kind` (`post` or `trip`) and `at`.
+
+### Admin and moderation (`/api/v1/admin`)
+
+Staff only. Every route declares a permission and is checked on the server against the caller's
+current role (members get 403; a role change applies on the next request). The admin app hides
+buttons by the same table, but that is never the authorization.
+
+| Permission            | SUPER_ADMIN | MODERATOR | SUPPORT | OPERATIONS |
+| --------------------- | ----------- | --------- | ------- | ---------- |
+| `dashboard.view`      | yes         | yes       | yes     | yes        |
+| `users.read`          | yes         | yes       | yes     | yes        |
+| `users.suspend`       | yes         | yes       |         |            |
+| `users.role`          | yes         |           |         |            |
+| `trips.read`          | yes         | yes       | yes     | yes        |
+| `content.moderate`    | yes         | yes       |         |            |
+| `reports.read`        | yes         | yes       | yes     |            |
+| `reports.manage`      | yes         | yes       |         |            |
+| `operators.read`      | yes         |           |         | yes        |
+| `operators.verify`    | yes         |           |         | yes        |
+| `operators.documents` | yes         |           |         | yes        |
+| `audit.read`          | yes         |           |         |            |
+
+| Method | Path                                           | Permission            | Description                                                                                                                                                         |
+| ------ | ---------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/admin/me`                                    | `dashboard.view`      | The staff member, role and permissions.                                                                                                                             |
+| GET    | `/admin/dashboard`                             | `dashboard.view`      | Members (total, new, active, suspended), trips (created, completed, upcoming, hidden), reports, operator queue, 14-day series. `bookings: null` until milestone 13. |
+| GET    | `/admin/staff`                                 | `reports.manage`      | Moderators and super admins, for assigning reports.                                                                                                                 |
+| GET    | `/admin/audit`                                 | `audit.read`          | Audit log, newest first, cursor. Filters `action` (prefix), `actorId`, `entityType`, `entityId`.                                                                    |
+| GET    | `/admin/users`                                 | `users.read`          | Search by username, name, exact email or id; filter `status`, `role`. Email is masked (`a***@example.com`).                                                         |
+| GET    | `/admin/users/:id`                             | `users.read`          | Status, masked contacts, verification (bikes, operator), counts, reports against them, moderation history.                                                          |
+| POST   | `/admin/users/:id/suspend`                     | `users.suspend`       | `{ reason }`. Signs them out everywhere and closes their sockets. Staff accounts need a super admin; never yourself.                                                |
+| POST   | `/admin/users/:id/restore`                     | `users.suspend`       | `{ reason }`. Suspended accounts only.                                                                                                                              |
+| POST   | `/admin/users/:id/role`                        | `users.role`          | `{ role, reason }`. Not your own account.                                                                                                                           |
+| GET    | `/admin/trips`                                 | `trips.read`          | Search title, place or id; filter `status`, `hidden`, `reported=true` (open reports).                                                                               |
+| GET    | `/admin/trips/:id`                             | `trips.read`          | Trip with reports and history. Place names only, never exact points.                                                                                                |
+| POST   | `/admin/trips/:id/hide`                        | `content.moderate`    | `{ reason }`. Out of discovery, feeds and community lists; only its organiser, people on it and staff still see it. The organiser sees `hiddenReason`.              |
+| POST   | `/admin/trips/:id/unhide`                      | `content.moderate`    | `{ reason }`.                                                                                                                                                       |
+| POST   | `/admin/trips/:id/cancel`                      | `content.moderate`    | `{ reason }`. The normal cancellation: participants are notified with the reason.                                                                                   |
+| POST   | `/admin/posts/:id/remove`                      | `content.moderate`    | `{ reason }`. 204.                                                                                                                                                  |
+| POST   | `/admin/messages/:id/remove`                   | `content.moderate`    | `{ reason }`. Removed for everyone, live. 204.                                                                                                                      |
+| GET    | `/admin/reports`                               | `reports.read`        | `status` = `QUEUE` (default: open and in review, most severe then oldest first), a single status, or `ALL`; `severity`, `targetType`, `assigned=me\|unassigned`.    |
+| GET    | `/admin/reports/:id`                           | `reports.read`        | Report, the reported content as it is now (for a message, that message only), related reports, history, allowed actions.                                            |
+| POST   | `/admin/reports/:id/assign`                    | `reports.manage`      | `{ assigneeId \| null }`. Assignee must be a moderator or super admin. An open report moves to `IN_REVIEW`.                                                         |
+| PATCH  | `/admin/reports/:id`                           | `reports.manage`      | `{ severity?, evidenceRefs? }` (up to 20 references). Unresolved reports only.                                                                                      |
+| POST   | `/admin/reports/:id/resolve`                   | `reports.manage`      | `{ outcome: ACTIONED \| DISMISSED, note }`. Tells the reporter it was reviewed.                                                                                     |
+| POST   | `/admin/reports/:id/reopen`                    | `reports.manage`      | `{ reason }`. Back to `IN_REVIEW`.                                                                                                                                  |
+| GET    | `/admin/operators`                             | `operators.read`      | Filter `status`, `q`.                                                                                                                                               |
+| GET    | `/admin/operators/:id`                         | `operators.read`      | Operator with document metadata (no files) and history. GSTIN only with `operators.documents`.                                                                      |
+| POST   | `/admin/operators/:id/documents/:docId/link`   | `operators.documents` | `{ url, expiresAt }`: a five-minute signed Cloudinary download link, recorded in the audit log first. 503 without Cloudinary keys.                                  |
+| POST   | `/admin/operators/:id/documents/:docId/review` | `operators.verify`    | `{ status: ACCEPTED \| REJECTED, note? }`.                                                                                                                          |
+| POST   | `/admin/operators/:id/status`                  | `operators.verify`    | `{ status: VERIFIED \| REJECTED \| SUSPENDED, reason }`. `VERIFIED` needs every document reviewed and one accepted. Nobody reviews an operator they own.            |
+
+Every change above writes an `audit_logs` row in the same transaction: actor, `actorType: ADMIN`,
+action (`user.suspend`, `user.restore`, `user.role_change`, `trip.hide`, `trip.unhide`,
+`trip.moderate_cancel`, `post.remove`, `message.remove`, `report.assign`, `report.triage`,
+`report.resolve`, `report.reopen`, `operator.document_review`, `operator.document_view`,
+`operator.verified|rejected|suspended`), target, timestamp, reason and request id. Reasons are 5
+to 500 characters. Conflicting changes (already suspended, already hidden, resolved meanwhile)
+return 409.
+
+The first super admin is created from the command line, which needs database access:
+`pnpm --filter @voyago/api admin:grant-role --email <email> --role SUPER_ADMIN --reason "<why>"`
+(recorded as a `SYSTEM` audit entry).
 
 ### Discovery
 

@@ -94,3 +94,325 @@ body {
 .muted {
   color: var(--muted);
 }
+
+/* ── Admin app ─────────────────────────────────────────────────────────── */
+
+:root {
+  --warn: #a86400;
+  --accent-text: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --warn: #f0b04a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+h1 {
+  font-size: 1.6rem;
+  margin: 0 0 12px;
+}
+
+h2 {
+  font-size: 1.1rem;
+  margin: 0 0 12px;
+}
+
+h3 {
+  font-size: 1rem;
+  margin: 12px 0 6px;
+}
+
+a {
+  color: var(--accent);
+}
+
+.content {
+  max-width: 1120px;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.topbar {
+  flex-wrap: wrap;
+}
+
+.topbar nav {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.me {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: var(--text);
+}
+
+button {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+button.danger {
+  border-color: var(--down);
+  color: var(--down);
+}
+
+button.link {
+  border: none;
+  background: none;
+  color: var(--accent);
+  padding: 0;
+}
+
+input,
+select,
+textarea {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 8px;
+  padding: 6px 10px;
+  max-width: 100%;
+}
+
+label {
+  display: grid;
+  gap: 4px;
+}
+
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.row,
+.actions,
+.filters {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.actions {
+  align-items: flex-start;
+}
+
+.filters input[type='search'] {
+  min-width: 260px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  display: block;
+  overflow-x: auto;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.badge--ok {
+  color: var(--ok);
+}
+
+.badge--warn {
+  color: var(--warn);
+}
+
+.badge--bad {
+  color: var(--down);
+}
+
+.badge--muted {
+  color: var(--muted);
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.metric-value {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 4px 0;
+}
+
+.metric-note {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.bars {
+  display: grid;
+  grid-template-columns: repeat(14, 1fr);
+  gap: 6px;
+  height: 120px;
+  align-items: end;
+}
+
+.bar-day {
+  display: flex;
+  gap: 2px;
+  align-items: flex-end;
+  height: 100%;
+}
+
+.bar {
+  flex: 1;
+  min-height: 2px;
+  border-radius: 3px 3px 0 0;
+}
+
+.bar--users,
+.dot--users {
+  background: var(--accent);
+}
+
+.bar--trips,
+.dot--trips {
+  background: var(--ok);
+}
+
+.dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.field dt {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.field dd {
+  margin: 2px 0 0;
+}
+
+.history {
+  margin: 0;
+  padding-left: 20px;
+  display: grid;
+  gap: 8px;
+}
+
+.notice {
+  border-left: 3px solid var(--warn);
+  padding: 8px 12px;
+  background: var(--surface);
+  margin: 0;
+}
+
+.error {
+  color: var(--down);
+}
+
+blockquote {
+  margin: 12px 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--border);
+  white-space: pre-wrap;
+}
+
+.reason-form {
+  display: grid;
+  gap: 8px;
+  min-width: 280px;
+  max-width: 480px;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.tab--active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.login {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.login .card,
+.login form {
+  display: grid;
+  gap: 12px;
+  width: min(380px, 100%);
+}
+
+@media (max-width: 640px) {
+  .me {
+    margin-left: 0;
+  }
+}

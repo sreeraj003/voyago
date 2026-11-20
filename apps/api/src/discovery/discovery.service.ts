@@ -267,6 +267,7 @@ export class DiscoveryService {
         WHERE p.trip_id = t.id AND p.status = 'ACTIVE'
       ) pc
       WHERE t.deleted_at IS NULL
+        AND t.hidden_at IS NULL
         AND t.visibility = 'PUBLIC'
         AND t.status IN ('PUBLISHED', 'FULL')
         AND t.trip_type = 'COMMUNITY_FREE'

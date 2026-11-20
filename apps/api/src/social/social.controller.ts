@@ -89,7 +89,7 @@ export class SocialController {
 
   @Post('reports')
   @ApiOperation({
-    summary: 'Report a member, trip, community or post',
+    summary: 'Report a member, trip, community, post or chat message',
     description:
       'Goes to the moderation queue. Reporting the same thing again while open is merged.',
   })

@@ -32,6 +32,7 @@ import { addMessageToCache, messagesKey } from '../../src/chat/messages-cache';
 import { request, useChatSocket } from '../../src/chat/realtime';
 import { PHOTOS_OFF_NOTE } from '../../src/components/CoverField';
 import { Button, FormMessage } from '../../src/components/Form';
+import { ReportForm } from '../../src/components/ReportForm';
 import { radius, spacing, typography } from '../../src/theme/tokens';
 import { useTheme } from '../../src/theme/use-theme';
 
@@ -394,11 +395,8 @@ export default function ChatScreen() {
               }
               selected={selected === item.message.id}
               onLongPress={() =>
-                setSelected(
-                  item.message.sender?.id === myId && !item.message.deleted
-                    ? item.message.id
-                    : null,
-                )
+                // Your own messages can be deleted; anyone else's can be reported.
+                setSelected(!item.message.deleted && item.message.sender ? item.message.id : null)
               }
               onDelete={() => remove.mutate(item.message.id)}
               deleting={remove.isPending}
@@ -495,7 +493,9 @@ function MessageBubble({
     <View style={[styles.bubbleWrap, mine ? styles.mineWrap : styles.theirsWrap]}>
       <Pressable
         onLongPress={onLongPress}
-        accessibilityHint={mine ? 'Long press for options' : undefined}
+        accessibilityHint={
+          message.deleted ? undefined : mine ? 'Long press to delete' : 'Long press to report'
+        }
         style={[
           styles.bubble,
           {
@@ -549,8 +549,11 @@ function MessageBubble({
       {receipt ? (
         <Text style={[styles.caption, { color: colors.textMuted }]}>{receipt}</Text>
       ) : null}
-      {selected ? (
+      {selected && mine ? (
         <Button title="Delete for everyone" variant="link" loading={deleting} onPress={onDelete} />
+      ) : null}
+      {selected && !mine ? (
+        <ReportForm targetType="MESSAGE" targetId={message.id} label="Report message" />
       ) : null}
     </View>
   );

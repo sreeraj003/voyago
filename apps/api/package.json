@@ -17,6 +17,7 @@
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "db:seed": "prisma db seed",
+    "admin:grant-role": "tsx prisma/grant-role.ts",
     "db:reset": "node scripts/assert-dev-database.mjs && prisma migrate reset --force && prisma db seed"
   },
   "dependencies": {

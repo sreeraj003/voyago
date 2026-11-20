@@ -1,4 +1,7 @@
-import { fetchHealth } from './api';
+import { z } from 'zod';
+import { api, fetchHealth } from './api';
+import { clearSession, getSession, setTokens } from './session';
+import { fakeFetch, tokens } from './test-fetch';
 
 const healthy = {
   status: 'ok',
@@ -34,5 +37,56 @@ describe('fetchHealth', () => {
 
   it('rejects a malformed body', async () => {
     await expect(fetchHealth(respond(200, { status: 'ok' }))).rejects.toThrow();
+  });
+});
+
+describe('api', () => {
+  afterEach(() => clearSession());
+
+  it('refreshes an expired session once and retries, sharing one refresh', async () => {
+    setTokens(tokens(1).data);
+    let refreshes = 0;
+    let meCalls = 0;
+    const calls: string[] = [];
+    const fetchImpl = fakeFetch(
+      {
+        'POST /auth/refresh': () => ({ status: 200, body: tokens(++refreshes + 1) }),
+        'GET /admin/staff': () => ({
+          status: ++meCalls <= 2 ? 401 : 200,
+          body: meCalls <= 2 ? { message: 'expired' } : { data: [] },
+        }),
+      },
+      calls,
+    );
+    const results = await Promise.all([
+      api('/admin/staff', { fetchImpl, schema: z.array(z.unknown()) }),
+      api('/admin/staff', { fetchImpl, schema: z.array(z.unknown()) }),
+    ]);
+    expect(results).toEqual([[], []]);
+    expect(refreshes).toBe(1);
+    expect(getSession()?.accessToken).toBe('access-2');
+  });
+
+  it('ends the session when the refresh token is refused', async () => {
+    setTokens(tokens(1).data);
+    const fetchImpl = fakeFetch({
+      'POST /auth/refresh': { status: 401, body: { message: 'Signed out' } },
+      'GET /admin/me': { status: 401, body: { message: 'expired' } },
+    });
+    await expect(api('/admin/me', { fetchImpl })).rejects.toThrow('Sign in again');
+    expect(getSession()).toBeNull();
+  });
+
+  it('turns API errors into readable messages', async () => {
+    setTokens(tokens(1).data);
+    const fetchImpl = fakeFetch({
+      'POST /admin/users/x/suspend': {
+        status: 400,
+        body: { message: 'Validation failed', details: [{ path: 'reason', message: 'Too short' }] },
+      },
+    });
+    await expect(
+      api('/admin/users/x/suspend', { method: 'POST', body: {}, fetchImpl }),
+    ).rejects.toMatchObject({ status: 400, message: 'Too short' });
   });
 });

@@ -42,6 +42,11 @@ const USERS = {
   vikram: id(2),
   meera: id(3),
   rahul: id(4),
+  // Staff accounts for the admin app (one per role).
+  admin: id(5),
+  moderator: id(6),
+  support: id(7),
+  operations: id(8),
 } as const;
 const COMMUNITY = id(100);
 const TRIPS = {
@@ -54,6 +59,7 @@ const OPERATOR = id(300);
 const PACKAGE = id(301);
 const CONVERSATION = id(400);
 const JOIN_REQUEST = id(600);
+const REPORTS = { spam: id(700), unsafe: id(701) } as const;
 const PLANS = { explorer: id(500), organiser: id(501) } as const;
 
 const PLACES: Record<string, GeoPoint> = {
@@ -125,6 +131,30 @@ async function main(): Promise<void> {
           displayName: 'Rahul (dev)',
           homeCity: 'Mysuru',
           bio: 'Sample operator owner.',
+        },
+        {
+          id: USERS.admin,
+          username: 'dev_admin',
+          displayName: 'Admin (dev)',
+          role: 'SUPER_ADMIN' as const,
+        },
+        {
+          id: USERS.moderator,
+          username: 'dev_mod',
+          displayName: 'Moderator (dev)',
+          role: 'MODERATOR' as const,
+        },
+        {
+          id: USERS.support,
+          username: 'dev_support',
+          displayName: 'Support (dev)',
+          role: 'SUPPORT' as const,
+        },
+        {
+          id: USERS.operations,
+          username: 'dev_ops',
+          displayName: 'Operations (dev)',
+          role: 'OPERATIONS' as const,
         },
       ];
       for (const user of users) {
@@ -394,6 +424,8 @@ async function main(): Promise<void> {
           businessEmail: 'operator@example.com',
           verificationStatus: 'VERIFIED',
           verifiedAt: new Date(),
+          verifiedById: USERS.admin,
+          verificationNote: 'Development sample: verified by the dev admin account.',
         },
         update: {},
       });
@@ -441,6 +473,36 @@ async function main(): Promise<void> {
       await tx.tripParticipant.upsert({
         where: { tripId_userId: { tripId: TRIPS.sakleshpur, userId: USERS.rahul } },
         create: { tripId: TRIPS.sakleshpur, userId: USERS.rahul, role: 'ORGANISER' },
+        update: {},
+      });
+
+      // ── Moderation queue samples ─────────────────────────────────────────
+      await tx.report.upsert({
+        where: { id: REPORTS.spam },
+        create: {
+          id: REPORTS.spam,
+          reporterId: USERS.vikram,
+          targetType: 'USER',
+          targetId: USERS.rahul,
+          reportedUserId: USERS.rahul,
+          reason: 'SPAM',
+          severity: 'LOW',
+          details: 'Sample report (dev): repeated promotional messages.',
+        },
+        update: {},
+      });
+      await tx.report.upsert({
+        where: { id: REPORTS.unsafe },
+        create: {
+          id: REPORTS.unsafe,
+          reporterId: USERS.meera,
+          targetType: 'TRIP',
+          targetId: TRIPS.nandi,
+          reportedUserId: USERS.asha,
+          reason: 'UNSAFE_BEHAVIOUR',
+          severity: 'HIGH',
+          details: 'Sample report (dev): the plan mentions riding above the speed limit.',
+        },
         update: {},
       });
 

@@ -8,9 +8,12 @@ import {
   type BlockedUser,
   type Connection,
   type CreateReportSchema,
+  defaultReportSeverity,
   type PageResponse,
+  type ReportTargetType,
 } from '@voyago/shared';
 import { type z } from 'zod';
+import { ChatService } from '../chat/chat.service.js';
 import { type AuthUser } from '../common/auth/current-user.decorator.js';
 import { decodeCursor, encodeCursor } from '../common/pagination/cursor.js';
 import { PrismaService } from '../database/prisma.service.js';
@@ -28,6 +31,7 @@ export class SocialService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly chat: ChatService,
   ) {}
 
   async follow(user: AuthUser, username: string): Promise<void> {
@@ -112,7 +116,10 @@ export class SocialService {
     return rows.map((row) => ({ user: row.blocked, blockedAt: row.createdAt.toISOString() }));
   }
 
-  /** Report a member, trip, community or post. Repeat reports of the same thing are merged. */
+  /**
+   * Report a member, trip, community, post or chat message. Repeat reports of the same thing by
+   * the same person are merged while the first is unresolved.
+   */
   async report(user: AuthUser, input: z.output<typeof CreateReportSchema>) {
     const reportedUserId = await this.reportTarget(user, input.targetType, input.targetId);
     const existing = await this.prisma.report.findFirst({
@@ -120,7 +127,7 @@ export class SocialService {
         reporterId: user.id,
         targetType: input.targetType,
         targetId: input.targetId,
-        status: 'OPEN',
+        status: { in: ['OPEN', 'IN_REVIEW'] },
       },
       select: { id: true, createdAt: true },
     });
@@ -133,6 +140,7 @@ export class SocialService {
           targetId: input.targetId,
           reportedUserId,
           reason: input.reason,
+          severity: defaultReportSeverity(input.reason),
           details: input.details ?? null,
         },
         select: { id: true, createdAt: true },
@@ -247,7 +255,7 @@ export class SocialService {
   /** Checks the reported thing exists (and is visible to the reporter); returns who is responsible. */
   private async reportTarget(
     user: AuthUser,
-    type: 'USER' | 'TRIP' | 'COMMUNITY' | 'POST',
+    type: ReportTargetType,
     id: string,
   ): Promise<string | null> {
     const notFound = new NotFoundException('Nothing to report with that id');
@@ -281,6 +289,19 @@ export class SocialService {
         });
         if (!row) throw notFound;
         return row.authorId;
+      }
+      case 'MESSAGE': {
+        // Only someone in the chat can report a message from it.
+        const row = await this.prisma.message.findFirst({
+          where: { id, deletedAt: null },
+          select: { senderId: true, conversationId: true },
+        });
+        if (!row) throw notFound;
+        await this.chat.access(user.id, row.conversationId).catch(() => {
+          throw notFound;
+        });
+        if (row.senderId === user.id) throw new ConflictException('You cannot report yourself');
+        return row.senderId;
       }
     }
   }

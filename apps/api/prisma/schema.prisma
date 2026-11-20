@@ -21,10 +21,13 @@ datasource db {
 // Enums
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// USER is a member; the rest are Voyago staff roles (permissions in @voyago/shared admin.ts).
 enum UserRole {
   USER
+  SUPER_ADMIN
   MODERATOR
-  ADMIN
+  SUPPORT
+  OPERATIONS
 }
 
 enum UserStatus {
@@ -284,6 +287,13 @@ enum ReportReason {
   OTHER
 }
 
+enum ReportSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
 enum ReportStatus {
   OPEN
   IN_REVIEW
@@ -296,6 +306,21 @@ enum OperatorVerificationStatus {
   VERIFIED
   REJECTED
   SUSPENDED
+}
+
+enum OperatorDocumentKind {
+  BUSINESS_REGISTRATION
+  GST_CERTIFICATE
+  OWNER_ID
+  INSURANCE
+  TOURISM_LICENCE
+  OTHER
+}
+
+enum OperatorDocumentStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
 }
 
 enum PackageStatus {
@@ -411,6 +436,8 @@ model User {
   reportsAssigned     Report[]             @relation("ReportAssignee")
   operator            CommercialOperator?  @relation("OperatorOwner")
   verifiedOperators   CommercialOperator[] @relation("OperatorVerifier")
+  reviewedDocuments   OperatorDocument[]   @relation("DocumentReviewer")
+  hiddenTrips         Trip[]               @relation("TripHider")
   bookings            Booking[]
   payments            Payment[]
   subscriptions       Subscription[]
@@ -621,6 +648,10 @@ model Trip {
   reminderSentAt           DateTime?                              @map("reminder_sent_at") @db.Timestamptz(3)
   cancelledAt              DateTime?                              @map("cancelled_at") @db.Timestamptz(3)
   cancellationReason       String?                                @map("cancellation_reason") @db.VarChar(500)
+  /// Hidden by moderators: only the organiser, participants and staff can still see it.
+  hiddenAt                 DateTime?                              @map("hidden_at") @db.Timestamptz(3)
+  hiddenReason             String?                                @map("hidden_reason") @db.VarChar(500)
+  hiddenById               String?                                @map("hidden_by_id") @db.Uuid
   createdAt                DateTime                               @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                DateTime                               @updatedAt @map("updated_at") @db.Timestamptz(3)
   deletedAt                DateTime?                              @map("deleted_at") @db.Timestamptz(3)
@@ -628,6 +659,7 @@ model Trip {
   searchVector             Unsupported("tsvector")?               @default(dbgenerated()) @map("search_vector")
 
   organiser         User               @relation("TripOrganiser", fields: [organiserId], references: [id], onDelete: Restrict)
+  hiddenBy          User?              @relation("TripHider", fields: [hiddenById], references: [id], onDelete: SetNull)
   community         Community?         @relation(fields: [communityId], references: [id], onDelete: SetNull)
   commercialPackage CommercialPackage? @relation(fields: [commercialPackageId], references: [id], onDelete: Restrict)
   stops             TripStop[]
@@ -963,6 +995,9 @@ model Report {
   reason         ReportReason
   details        String?          @db.VarChar(2000)
   status         ReportStatus     @default(OPEN)
+  severity       ReportSeverity   @default(MEDIUM)
+  /// Moderator-added references (links, message ids, ticket numbers); at most 20.
+  evidenceRefs   String[]         @default([]) @map("evidence_refs")
   assignedToId   String?          @map("assigned_to_id") @db.Uuid
   resolutionNote String?          @map("resolution_note") @db.VarChar(2000)
   resolvedAt     DateTime?        @map("resolved_at") @db.Timestamptz(3)
@@ -1020,15 +1055,44 @@ model CommercialOperator {
   verificationStatus OperatorVerificationStatus @default(PENDING) @map("verification_status")
   verifiedAt         DateTime?                  @map("verified_at") @db.Timestamptz(3)
   verifiedById       String?                    @map("verified_by_id") @db.Uuid
+  /// Latest reason given by staff for the verification status.
+  verificationNote   String?                    @map("verification_note") @db.VarChar(1000)
+  /// When the operator submitted documents for review.
+  submittedAt        DateTime?                  @map("submitted_at") @db.Timestamptz(3)
   createdAt          DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   owner      User                @relation("OperatorOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
   verifiedBy User?               @relation("OperatorVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
   packages   CommercialPackage[]
+  documents  OperatorDocument[]
 
   @@index([verificationStatus])
   @@map("commercial_operators")
+}
+
+/// Business documentation an operator submits for verification. Sensitive: the file is a private
+/// Cloudinary asset, opened only through short-lived links by staff allowed to (each view audited).
+model OperatorDocument {
+  id           String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  operatorId   String                 @map("operator_id") @db.Uuid
+  kind         OperatorDocumentKind
+  /// Private Cloudinary public id (operator-docs folder). Not a URL.
+  storageKey   String                 @map("storage_key")
+  /// File extension used for downloads, e.g. pdf, jpg.
+  format       String                 @db.VarChar(10)
+  fileName     String                 @map("file_name") @db.VarChar(200)
+  status       OperatorDocumentStatus @default(PENDING)
+  reviewNote   String?                @map("review_note") @db.VarChar(1000)
+  reviewedById String?                @map("reviewed_by_id") @db.Uuid
+  reviewedAt   DateTime?              @map("reviewed_at") @db.Timestamptz(3)
+  uploadedAt   DateTime               @default(now()) @map("uploaded_at") @db.Timestamptz(3)
+
+  operator   CommercialOperator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  reviewedBy User?              @relation("DocumentReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([operatorId])
+  @@map("operator_documents")
 }
 
 /// A paid travel experience. Never passenger transport or ride-hailing.

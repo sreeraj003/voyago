@@ -17,7 +17,8 @@
     "@voyago/shared": "workspace:*",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "react-router-dom": "7.18.6"
+    "react-router-dom": "7.18.6",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "6.10.0",

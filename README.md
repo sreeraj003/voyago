@@ -90,7 +90,11 @@ pnpm --filter @voyago/mobile start      # Expo dev server for the mobile app
 
 - Health: <http://localhost:3000/api/v1/health/live> (liveness), <http://localhost:3000/api/v1/health/ready> (readiness)
 - API docs (OpenAPI): <http://localhost:3000/api/docs>
-- Admin: <http://localhost:5173>
+- Admin: <http://localhost:5173>. Sign in with a staff account. After `pnpm db:seed` locally:
+  `dev_admin`, `dev_mod`, `dev_support` or `dev_ops` (`@example.com`, password
+  `voyago-dev-password`). In a real environment, create the first super admin with
+  `pnpm --filter @voyago/api admin:grant-role --email <email> --role SUPER_ADMIN --reason "<why>"`;
+  after that, super admins manage roles in the admin app.
 
 On a physical phone, set `EXPO_PUBLIC_API_BASE_URL` in `apps/mobile/.env` to your computer's LAN IP
 (for example `http://192.168.1.20:3000/api/v1`), not `localhost`.

@@ -10,7 +10,9 @@ import { TripModeSchema } from './trip-mode.js';
  * profiles never include contact details, exact locations, vehicle identifiers or documents.
  */
 
-export const UserRoleSchema = z.enum(['USER', 'MODERATOR', 'ADMIN']);
+/** USER is a member; the other roles are Voyago staff (see admin.ts for what each may do). */
+export const UserRoleSchema = z.enum(['USER', 'SUPER_ADMIN', 'MODERATOR', 'SUPPORT', 'OPERATIONS']);
+export type UserRole = z.infer<typeof UserRoleSchema>;
 export const UserStatusSchema = z.enum(['ACTIVE', 'SUSPENDED', 'DEACTIVATED']);
 export const ProfileVisibilitySchema = z.enum(['PUBLIC', 'FOLLOWERS', 'PRIVATE']);
 export const MessagePermissionSchema = z.enum([

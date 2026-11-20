@@ -203,6 +203,7 @@ export class PostsService {
       this.prisma.trip.findMany({
         where: {
           deletedAt: null,
+          hiddenAt: null,
           tripType: 'COMMUNITY_FREE',
           status: { in: [...FEED_TRIP_STATUSES] },
           publishedAt: { not: null },

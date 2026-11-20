@@ -154,6 +154,38 @@ export class CloudinaryService {
     return `https://res.cloudinary.com/${this.config.CLOUDINARY_CLOUD_NAME}/image/authenticated/s--${signature}--/${toSign}`;
   }
 
+  /**
+   * A short-lived download link for a private (authenticated) asset, such as an operator
+   * document. Uses Cloudinary's signed download API, so the link stops working at `expiresAt`.
+   * Null when Cloudinary isn't configured.
+   */
+  privateDownloadUrl(
+    publicId: string,
+    format: string,
+    ttlSeconds = 300,
+    now = Date.now(),
+  ): { url: string; expiresAt: Date } | null {
+    if (!this.enabled || !this.config.CLOUDINARY_CLOUD_NAME) return null;
+    const timestamp = Math.floor(now / 1000);
+    const expiresAt = timestamp + ttlSeconds;
+    const params: Record<string, string> = {
+      expires_at: String(expiresAt),
+      format,
+      public_id: publicId,
+      timestamp: String(timestamp),
+      type: 'authenticated',
+    };
+    const query = new URLSearchParams({
+      ...params,
+      api_key: this.config.CLOUDINARY_API_KEY,
+      signature: this.sign(params),
+    });
+    return {
+      url: `https://api.cloudinary.com/v1_1/${this.config.CLOUDINARY_CLOUD_NAME}/image/download?${query.toString()}`,
+      expiresAt: new Date(expiresAt * 1000),
+    };
+  }
+
   private assertEnabled(): void {
     if (!this.enabled) throw new ServiceUnavailableException('Image uploads are not available yet');
   }

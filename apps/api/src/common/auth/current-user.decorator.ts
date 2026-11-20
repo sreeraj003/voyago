@@ -1,9 +1,10 @@
+import { type UserRole } from '@voyago/shared';
 import { createParamDecorator, type ExecutionContext, UnauthorizedException } from '@nestjs/common';
 
 /** The signed-in member, attached to the request by AuthGuard. */
 export interface AuthUser {
   id: string;
-  role: 'USER' | 'MODERATOR' | 'ADMIN';
+  role: UserRole;
   sessionFamilyId: string;
 }
 

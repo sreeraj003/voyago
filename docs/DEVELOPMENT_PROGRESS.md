@@ -14,13 +14,101 @@ verified before the next starts.
 | 07  | Join requests and participant management    | Done        |
 | 08  | Communities and social graph                | Done        |
 | 09  | Chat and notifications                      | Done        |
-| 10  | Admin dashboard and moderation              | Not started |
+| 10  | Admin dashboard and moderation              | Done        |
 | 11  | Live location and safety workflows          | Not started |
 | 12  | Commercial operators and packages           | Not started |
 | 13  | Bookings, payments, commissions and refunds | Not started |
 | 14  | Subscriptions and monetisation              | Not started |
 | 15  | Analytics, observability and operations     | Not started |
 | 16  | Security, testing, launch readiness, deploy | Not started |
+
+---
+
+## Milestone 10: Admin dashboard and moderation (2026-11-20)
+
+### Implemented
+
+- **Staff roles and backend RBAC:** `SUPER_ADMIN` (was `ADMIN`), `MODERATOR`, `SUPPORT` and
+  `OPERATIONS`. One permission table in `@voyago/shared` (`PERMISSIONS_BY_ROLE`); every `/admin`
+  route declares a permission and `PermissionGuard` checks it against the role loaded on each
+  request, failing closed when a route declares none. Moderators cannot act on staff accounts,
+  nobody acts on their own account, and only super admins change roles. Support and operations
+  staff do not get the moderators' extra powers in the member app (exact meeting points, managing
+  trips). The first super admin is created with `pnpm --filter @voyago/api admin:grant-role`.
+- **Audit:** every privileged action writes an append-only `audit_logs` row in the same
+  transaction: actor, action, target, time, reason, request id and before/after values. Super
+  admins browse and filter it; detail pages show each item's history.
+- **Dashboard:** members (total, new in 7 and 30 days, active, suspended), trips (created and
+  completed in 30 days, upcoming, hidden), reports awaiting review and urgent ones, the operator
+  verification queue, and a 14-day chart. Booking and payment metrics say "later" until
+  milestone 13.
+- **Members:** search by username, name, exact email or id; status, role, masked contact details,
+  verification (bikes, operator), reports against them and moderation history. Suspending signs
+  the member out everywhere at once (sessions revoked, sockets closed); restoring reopens sign-in.
+- **Trips and content:** search and filter (status, hidden, open reports). Moderators hide a trip
+  (gone from discovery, feeds and community lists; its organiser, people on it and staff still
+  see it, and the organiser sees why), show it again, or cancel it through the normal
+  cancellation so participants are told the reason. Posts and chat messages can be removed.
+- **Reports:** severity (set from the reason, changeable), category, reporter and subject,
+  evidence references, status, resolution notes and assignment. The queue is ordered most severe,
+  then oldest. Lifecycle: open, in review (on assignment or triage), actioned or dismissed with a
+  note, reopen with a reason. Moderators see the reported content as it is now; for a chat message
+  only that message. Reporters hear that their report was reviewed, never the outcome for the
+  other person. Members can now report chat messages (long-press in a chat), only from chats they
+  are in.
+- **Operator verification:** operators' documents (new `operator_documents`) are reviewed one by
+  one; verifying needs every document reviewed and one accepted, and is always a person's
+  decision with a reason. Documents open through five-minute signed links for operations staff
+  and super admins only, and every opening is audited. Nobody reviews an operator they own.
+- **Admin app** (`apps/admin`): sign-in with a staff account (members are turned away), overview,
+  reports queue and detail, members, trips, operators and audit log, with navigation and buttons
+  by permission. The access token stays in memory and the rotating refresh token in
+  sessionStorage (cleared when the tab closes).
+- **Mobile:** "Report message" on other people's messages, and organisers see when moderators hid
+  their trip and why.
+
+### Database changes
+
+Migration `20261122090000_admin_moderation`; see `docs/DATABASE.md`.
+
+### APIs
+
+`/admin/me`, `/admin/dashboard`, `/admin/staff`, `/admin/audit`, `/admin/users` (detail,
+`suspend`, `restore`, `role`), `/admin/trips` (detail, `hide`, `unhide`, `cancel`),
+`/admin/posts/:id/remove`, `/admin/messages/:id/remove`, `/admin/reports` (detail, `assign`,
+triage `PATCH`, `resolve`, `reopen`), `/admin/operators` (detail, document `link` and `review`,
+`status`). `/reports` accepts `MESSAGE`; trips gain `hiddenReason`. See `docs/API.md`, "Admin and
+moderation".
+
+### Tests
+
+- 18 new end-to-end tests (184 in total): the full role matrix over every admin area; members and signed-out
+  callers refused; role changes applying on the next request and never to yourself; dashboard;
+  suspension (sessions cut, sign-in refused, audited with reason and request id) and restoration;
+  moderators kept off staff accounts; reports with severity, message reports only from chat
+  members, assignment, triage, resolution with the reporter's notice, reopening and its audit
+  history; hiding and showing a trip; removing a message; staff cancellation; operator documents
+  restricted by role, verification refused until documents are reviewed and one accepted, and
+  refused for your own operator; database checks that a verified operator records its reviewer,
+  a hidden trip its reason and a resolved report its time.
+- Unit tests for the permission table, reason rules, severity defaults and masking (shared), the
+  fail-closed permission guard and the signed document links (API, 74 in total), and the admin
+  app's sign-in, role-based navigation, session refresh and error messages (12).
+- Browser check of the admin app against the real API: moderator dashboard, taking, triaging,
+  resolving and reopening a report, suspending and restoring a member, the audit page refused;
+  operations staff on the operator queue; the super admin's audit log; a member turned away; phone
+  width without sideways scrolling. No console errors.
+
+### Outstanding
+
+- Operators can't upload documents yet: the submission side comes with milestone 12, which
+  creates operator accounts. The review side, storage rules and links are ready. Opening a document
+  needs the Cloudinary keys (503 until then).
+- Staff accounts use the normal password sign-in. Two-factor sign-in for staff and an IP allow
+  list are planned for milestone 16.
+- Community moderation by Voyago staff (hiding a whole community) and review moderation are not
+  built; reports on communities can be handled by suspending the owner or removing posts.
+- Booking and payment metrics arrive with milestone 13.
 
 ---
 
@@ -95,8 +183,7 @@ see `docs/API.md`, "Chat".
   used to drop dead tokens.
 - Chat photos need the Cloudinary keys; without them the photo button is shown disabled with a
   note.
-- Reporting a message and the moderators' access process for reported chats come with
-  milestone 10. Booking notifications come with milestone 13.
+- Booking notifications come with milestone 13. (Message reports came with milestone 10.)
 - Community invitations (as opposed to join requests) are not built; the `COMMUNITY_INVITE`
   notification type is unused so far.
 - Members have no avatars yet, so chats show names only.

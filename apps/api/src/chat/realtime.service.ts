@@ -89,6 +89,12 @@ export class RealtimeService {
     if (conversation) this.evict(conversation.id, userId);
   }
 
+  /** Closes every live connection of a member, e.g. when the account is suspended. */
+  disconnectUser(userId: string): void {
+    if (!this.io) return;
+    this.io.in(userRoom(userId)).disconnectSockets(true);
+  }
+
   private evict(conversationId: string, userId: string): void {
     if (!this.io) return;
     const room = conversationRoom(conversationId);

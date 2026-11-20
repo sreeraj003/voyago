@@ -212,4 +212,34 @@ describe('CloudinaryService', () => {
     );
     expect(new CloudinaryService(unconfigured, fakeFetch(200, {})).chatPhotoUrl('x')).toBeNull();
   });
+
+  it('opens private documents through short-lived signed download links only', () => {
+    const cloudinary = new CloudinaryService(configured, fakeFetch(200, {}));
+    const key = `voyago-test/operator-docs/${USER}/22222222-2222-4222-8222-222222222222`;
+    const link = cloudinary.privateDownloadUrl(key, 'pdf', 300, 1_800_000_000_000);
+    expect(link?.expiresAt.toISOString()).toBe(new Date(1_800_000_300_000).toISOString());
+    const url = new URL(link!.url);
+    expect(url.origin + url.pathname).toBe('https://api.cloudinary.com/v1_1/demo/image/download');
+    const params = Object.fromEntries(url.searchParams);
+    expect(params).toMatchObject({
+      public_id: key,
+      format: 'pdf',
+      type: 'authenticated',
+      expires_at: '1800000300',
+      timestamp: '1800000000',
+    });
+    expect(params.signature).toBe(
+      cloudinary.sign({
+        expires_at: '1800000300',
+        format: 'pdf',
+        public_id: key,
+        timestamp: '1800000000',
+        type: 'authenticated',
+      }),
+    );
+    expect(link!.url).not.toContain('abcd');
+    expect(
+      new CloudinaryService(unconfigured, fakeFetch(200, {})).privateDownloadUrl(key, 'pdf'),
+    ).toBeNull();
+  });
 });

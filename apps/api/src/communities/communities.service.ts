@@ -446,6 +446,7 @@ export class CommunitiesService {
       where: {
         communityId: access.community.id,
         deletedAt: null,
+        ...(isStaff(user) ? {} : { hiddenAt: null }),
         tripType: 'COMMUNITY_FREE',
         // Only members see COMMUNITY trips, even in a public community.
         visibility: access.rank > 0 || isStaff(user) ? { in: ['PUBLIC', 'COMMUNITY'] } : 'PUBLIC',
