@@ -85,7 +85,11 @@ export class ChatGateway implements OnApplicationBootstrap, OnApplicationShutdow
     });
     // The Redis adapter lets every API instance reach every socket. These connections queue
     // commands while Redis is away, so a restart of Redis doesn't break chat for good.
-    const pub = this.redis.client.duplicate({ lazyConnect: false, enableOfflineQueue: true });
+    const pub = this.redis.client.duplicate({
+      lazyConnect: false,
+      enableOfflineQueue: true,
+      maxRetriesPerRequest: null,
+    });
     const sub = pub.duplicate();
     for (const client of [pub, sub]) {
       client.on('error', (error: Error) => this.logger.warn(`Realtime Redis: ${error.message}`));
@@ -103,7 +107,7 @@ export class ChatGateway implements OnApplicationBootstrap, OnApplicationShutdow
     this.realtime.io = io;
   }
 
-  async onApplicationShutdown(): Promise<void> {
+  onApplicationShutdown(): void {
     this.realtime.io = null;
     if (this.io) {
       this.io.local.disconnectSockets(true);
@@ -111,7 +115,8 @@ export class ChatGateway implements OnApplicationBootstrap, OnApplicationShutdow
       this.io.engine.close();
       this.io = null;
     }
-    await Promise.allSettled(this.redisClients.map((client) => client.quit()));
+    for (const client of this.redisClients) client.disconnect();
+    this.redisClients = [];
   }
 
   private async authenticate(socket: AnySocket): Promise<void> {
