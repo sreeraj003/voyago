@@ -11,18 +11,26 @@ import { APP_CONFIG, type AppConfig } from '../config/app-config.js';
 import { HTTP_FETCH, type HttpFetch, PROVIDER_TIMEOUT_MS } from './http-fetch.js';
 
 export const COVER_MAX_BYTES = 8 * 1024 * 1024;
+export const DOCUMENT_MAX_BYTES = 10 * 1024 * 1024;
 const COVER_FORMATS = 'jpg,jpeg,png,webp';
+const DOCUMENT_FORMATS = 'pdf,jpg,jpeg,png';
 const FOLDERS: Record<UploadKind, string> = {
   'trip-cover': 'trip-covers',
   'community-cover': 'community-covers',
   'post-photo': 'post-photos',
   'chat-photo': 'chat-photos',
+  'package-photo': 'package-photos',
+  'operator-document': 'operator-docs',
 };
 /**
- * Chat photos are private: uploaded as Cloudinary "authenticated" assets, which are served only
- * through URLs signed by this server, and those URLs are given only to the chat's members.
+ * Chat photos and operator documents are private: uploaded as Cloudinary "authenticated"
+ * assets, which are served only through URLs signed by this server, and only to the people
+ * allowed to see them (the chat's members; operations staff for documents).
  */
-const deliveryType = (kind: UploadKind) => (kind === 'chat-photo' ? 'authenticated' : 'upload');
+const deliveryType = (kind: UploadKind) =>
+  kind === 'chat-photo' || kind === 'operator-document' ? 'authenticated' : 'upload';
+const maxBytes = (kind: UploadKind) =>
+  kind === 'operator-document' ? DOCUMENT_MAX_BYTES : COVER_MAX_BYTES;
 const CHAT_PHOTO_TRANSFORM = 'c_limit,w_1600,q_auto,f_auto';
 
 /**
@@ -60,7 +68,7 @@ export class CloudinaryService {
     this.assertEnabled();
     const imageId = `${this.folderFor(userId, kind)}/${randomUUID()}`;
     const params: Record<string, string> = {
-      allowed_formats: COVER_FORMATS,
+      allowed_formats: kind === 'operator-document' ? DOCUMENT_FORMATS : COVER_FORMATS,
       public_id: imageId,
       timestamp: String(Math.floor(now / 1000)),
     };
@@ -69,7 +77,7 @@ export class CloudinaryService {
       uploadUrl: `https://api.cloudinary.com/v1_1/${this.config.CLOUDINARY_CLOUD_NAME}/image/upload`,
       fields: { ...params, api_key: this.config.CLOUDINARY_API_KEY, signature: this.sign(params) },
       imageId,
-      maxBytes: COVER_MAX_BYTES,
+      maxBytes: maxBytes(kind),
     };
   }
 
@@ -89,15 +97,16 @@ export class CloudinaryService {
    * and is within the size limit (checked with the Admin API).
    */
   async assertOwnUploadedCover(userId: string, imageId: string): Promise<void> {
-    return this.assertOwnUpload(userId, imageId, 'trip-cover', 'coverImageId');
+    await this.assertOwnUpload(userId, imageId, 'trip-cover', 'coverImageId');
   }
 
+  /** Checks the upload as above and returns what Cloudinary stored (file format and size). */
   async assertOwnUpload(
     userId: string,
     imageId: string,
     kind: UploadKind,
     path: string,
-  ): Promise<void> {
+  ): Promise<{ format: string | null; bytes: number | null }> {
     this.assertEnabled();
     const invalid = new BadRequestException({
       message: 'Validation failed',
@@ -127,8 +136,12 @@ export class CloudinaryService {
       this.logger.warn(`Cloudinary responded ${res.status}`);
       throw new ServiceUnavailableException('Image uploads are temporarily unavailable');
     }
-    const { bytes } = (await res.json()) as { bytes?: number };
-    if (typeof bytes === 'number' && bytes > COVER_MAX_BYTES) throw invalid;
+    const { bytes, format } = (await res.json()) as { bytes?: number; format?: string };
+    if (typeof bytes === 'number' && bytes > maxBytes(kind)) throw invalid;
+    return {
+      format: typeof format === 'string' ? format.toLowerCase() : null,
+      bytes: typeof bytes === 'number' ? bytes : null,
+    };
   }
 
   /** 1200×630 crop, automatic format and quality. Null when Cloudinary isn't configured. */

@@ -476,8 +476,20 @@ export const AdminOperatorDetailSchema = AdminOperatorSummarySchema.extend({
   verifiedAt: z.string().nullable(),
   verifiedBy: StaffPersonSchema.nullable(),
   documents: z.array(OperatorDocumentSchema),
+  packages: z.array(
+    z.object({
+      id: z.uuid(),
+      title: z.string(),
+      status: z.enum(['DRAFT', 'PENDING_REVIEW', 'PUBLISHED', 'SUSPENDED', 'ARCHIVED']),
+      startsAt: z.string().nullable(),
+      pricePaise: z.number().int(),
+      suspendedReason: z.string().nullable(),
+    }),
+  ),
   history: z.array(AuditEntrySchema),
-  actions: z.array(z.enum(['review_documents', 'open_documents', 'set_status'])),
+  actions: z.array(
+    z.enum(['review_documents', 'open_documents', 'set_status', 'moderate_packages']),
+  ),
 });
 export type AdminOperatorDetail = z.infer<typeof AdminOperatorDetailSchema>;
 
@@ -492,6 +504,9 @@ export const SetOperatorStatusSchema = z.object({
   reason: ModerationReasonSchema,
 });
 export type SetOperatorStatusInput = z.input<typeof SetOperatorStatusSchema>;
+
+export const SuspendPackageSchema = z.object({ reason: ModerationReasonSchema });
+export type SuspendPackageInput = z.input<typeof SuspendPackageSchema>;
 
 export const DocumentLinkSchema = z.object({ url: z.string(), expiresAt: z.string() });
 export type DocumentLink = z.infer<typeof DocumentLinkSchema>;

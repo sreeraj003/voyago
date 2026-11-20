@@ -85,6 +85,7 @@ async function createVerifiedPackage(tx: Tx, ownerId: string) {
   const reviewer = await createUser(tx);
   const operator = await tx.commercialOperator.create({
     data: {
+      category: 'TREKKING',
       ownerUserId: ownerId,
       slug: `op-${unique()}`,
       legalName: 'Test Operator Pvt Ltd',
@@ -374,6 +375,7 @@ describe('community trips stay separate from commercial bookings', () => {
       const user = await createUser(tx);
       await tx.commercialOperator.create({
         data: {
+          category: 'TREKKING',
           ownerUserId: user.id,
           slug: `op-${unique()}`,
           legalName: 'X',
@@ -408,7 +410,13 @@ describe('community trips stay separate from commercial bookings', () => {
     await expectDbError(async (tx) => {
       const user = await createUser(tx);
       const operator = await tx.commercialOperator.create({
-        data: { ownerUserId: user.id, slug: `op-${unique()}`, legalName: 'X', displayName: 'X' },
+        data: {
+          category: 'TREKKING',
+          ownerUserId: user.id,
+          slug: `op-${unique()}`,
+          legalName: 'X',
+          displayName: 'X',
+        },
       });
       await tx.commercialPackage.create({
         data: {

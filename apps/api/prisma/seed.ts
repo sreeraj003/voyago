@@ -14,7 +14,7 @@
 import 'dotenv/config';
 import { hash } from '@node-rs/argon2';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { type GeoPoint } from '@voyago/shared';
+import { type GeoPoint, OPERATOR_TERMS_VERSION } from '@voyago/shared';
 import { PrismaClient } from '../src/generated/prisma/client.js';
 import { setPointSql } from '../src/database/geo.js';
 
@@ -56,6 +56,14 @@ const TRIPS = {
   sakleshpur: id(203),
 } as const;
 const OPERATOR = id(300);
+/** A placeholder address for the sample business (not a real place of business). */
+const SAMPLE_OPERATOR_PROFILE = {
+  description: 'Development sample business for trying the operator dashboard. Not real.',
+  addressLine1: '1 Sample Street',
+  city: 'Sakleshpur',
+  state: 'Karnataka',
+  postalCode: '573134',
+};
 const PACKAGE = id(301);
 const CONVERSATION = id(400);
 const JOIN_REQUEST = id(600);
@@ -420,36 +428,60 @@ async function main(): Promise<void> {
           ownerUserId: USERS.rahul,
           slug: 'dev-western-ghats-treks',
           legalName: 'Development Sample Operator (not a real business)',
+          category: 'TREKKING',
           displayName: 'Western Ghats Treks (dev)',
           businessEmail: 'operator@example.com',
           verificationStatus: 'VERIFIED',
           verifiedAt: new Date(),
           verifiedById: USERS.admin,
           verificationNote: 'Development sample: verified by the dev admin account.',
+          ...SAMPLE_OPERATOR_PROFILE,
+          termsAcceptedAt: new Date(),
+          termsVersion: OPERATOR_TERMS_VERSION,
         },
-        update: {},
+        // Staff decisions on the sample stay; profile gaps from older seeds are filled in.
+        update: SAMPLE_OPERATOR_PROFILE,
       });
+      await tx.commercialOperator.updateMany({
+        where: { id: OPERATOR, termsAcceptedAt: null },
+        data: { termsAcceptedAt: new Date(), termsVersion: OPERATOR_TERMS_VERSION },
+      });
+      // The sample package's dates move forward each time the seed runs, so it stays listed. It
+      // is published only while the sample operator is verified (staff may have changed that).
+      const operatorNow = await tx.commercialOperator.findUniqueOrThrow({
+        where: { id: OPERATOR },
+        select: { verificationStatus: true },
+      });
+      const packageData = {
+        mode: 'TRAVEL' as const,
+        activityType: 'TREK' as const,
+        title: 'Sakleshpur green route trek (dev sample)',
+        description: 'Development sample package. Not for sale.',
+        destinationName: 'Sakleshpur',
+        durationDays: 2,
+        pricePaise: 349_900,
+        maxGroupSize: 15,
+        inclusions: ['Guide', 'Homestay', 'Meals'],
+        exclusions: ['Travel to Sakleshpur'],
+        cancellationPolicy:
+          'Sample policy: full refund up to 72 hours before departure, 50% up to 24 hours before.',
+        startsAt: nextSaturday(7, 2),
+        endsAt: new Date(nextSaturday(7, 2).getTime() + 32 * 60 * 60 * 1000),
+        meetingPointName: 'Sakleshpur bus stand',
+        status:
+          operatorNow.verificationStatus === 'VERIFIED'
+            ? ('PUBLISHED' as const)
+            : ('DRAFT' as const),
+        suspendedReason: null,
+      };
       await tx.commercialPackage.upsert({
         where: { id: PACKAGE },
-        create: {
-          id: PACKAGE,
-          operatorId: OPERATOR,
-          mode: 'TRAVEL',
-          activityType: 'TREK',
-          title: 'Sakleshpur green route trek (dev sample)',
-          description: 'Development sample package. Not for sale.',
-          destinationName: 'Sakleshpur',
-          durationDays: 2,
-          pricePaise: 349_900,
-          maxGroupSize: 15,
-          inclusions: ['Guide', 'Homestay', 'Meals'],
-          exclusions: ['Travel to Sakleshpur'],
-          cancellationPolicy: 'Sample policy: full refund up to 72 hours before departure.',
-          status: 'PUBLISHED',
-          publishedAt: new Date(),
-        },
-        update: {},
+        create: { id: PACKAGE, operatorId: OPERATOR, publishedAt: new Date(), ...packageData },
+        update: packageData,
       });
+      await tx.$executeRaw(
+        setPointSql('commercial_packages', 'meeting_point', PACKAGE, PLACES.sakleshpur!),
+      );
       await tx.$executeRaw(
         setPointSql('commercial_packages', 'destination', PACKAGE, PLACES.sakleshpur!),
       );

@@ -261,6 +261,37 @@ fixed id beginning `5eed0000`, so re-running changes nothing. The `dev_*` accoun
 - Route data (`trips.origin/destination`, `trip_stops`) is planning data only. Live location is a
   separate store (Redis, milestone 11) and never written to these tables.
 
+## Milestone 12 changes (`20261124090000_commercial_marketplace`)
+
+- New enum `OperatorCategory` (`TOUR_OPERATOR`, `GUIDED_RIDES`, `TREKKING`,
+  `ADVENTURE_ACTIVITIES`, `CAMPING_AND_STAYS`, `OTHER`). `commercial_operators.category` is
+  required (existing rows were set to `OTHER` by the migration).
+- `commercial_operators` gains `description`, `website`, the business address (`address_line1`,
+  `address_line2`, `city`, `state`, `postal_code`, `country` default `IN`) and the terms the owner
+  accepted (`terms_accepted_at`, `terms_version`). Checks: `commercial_operators_country_format`,
+  `commercial_operators_postal_code` (6-digit Indian PIN), `commercial_operators_terms` (both terms
+  columns set together). Contact details, address and GSTIN never leave staff and owner views.
+- `commercial_packages` gains `image_keys` (up to 8; `commercial_packages_images_max`),
+  `starts_at`, `ends_at` (`commercial_packages_dates`: end after start), `meeting_point_name`,
+  `meeting_point` (geography point), `view_count` (`commercial_packages_view_count`, not
+  negative), `suspended_reason` (`commercial_packages_suspended_reason`: set exactly when the
+  status is `SUSPENDED`), and the index `(status, starts_at)` for listings.
+- `commercial_packages_published_complete`: a `PUBLISHED` package must have dates, a meeting point
+  and at least one inclusion; published packages missing them were moved back to `DRAFT` by the
+  migration. `commercial_packages_price_max` (at most ₹10,00,000 per person) and
+  `commercial_packages_group_size_max` (at most 200) add upper bounds to the existing checks. The
+  existing trigger `commercial_packages_enforce_verified_operator` still refuses `PUBLISHED`
+  unless the operator is `VERIFIED`.
+- New `package_questions`: package, asker, question, answer, answer time and who answered,
+  `hidden_at`. Checks `package_questions_question_present` and `package_questions_answered`
+  (answer and answer time set together). Cascades with the package and the asker; the answerer is
+  set to null if their account is deleted.
+- Daily view counting uses short-lived Redis keys `pkgview:{packageId}:{userId}` (24 hours); no
+  per-view rows are stored.
+- Owner and staff actions on operators and packages are written to `audit_logs`
+  (`operator.create`, `operator.document_add`, `operator.submit`, `package.publish`,
+  `package.unpublish`, `package.archive`, `package.suspend`, `package.restore`).
+
 ## Milestone 11 changes (`20261123090000_live_location_safety`)
 
 - `location_sessions` (from the initial schema) gains `end_reason` (`stopped`, `trip_ended`,

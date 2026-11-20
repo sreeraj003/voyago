@@ -20,7 +20,7 @@ export function geographyPoint(point: GeoPoint): Prisma.Sql {
 const WRITABLE_POINT_COLUMNS = {
   trips: ['origin', 'destination'],
   trip_stops: ['location'],
-  commercial_packages: ['destination'],
+  commercial_packages: ['destination', 'meeting_point'],
 } as const;
 
 type PointTable = keyof typeof WRITABLE_POINT_COLUMNS;

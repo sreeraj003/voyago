@@ -291,7 +291,7 @@ export class AdminReportsService {
   /** Short labels for reported things, fetched in one query per kind. */
   private async labels(rows: Pick<ReportRow, 'targetType' | 'targetId'>[]) {
     const ids = (type: string) => rows.filter((r) => r.targetType === type).map((r) => r.targetId);
-    const [users, trips, communities, posts, messages] = await Promise.all([
+    const [users, trips, communities, posts, messages, packages] = await Promise.all([
       this.prisma.user.findMany({
         where: { id: { in: ids('USER') } },
         select: { id: true, username: true },
@@ -312,6 +312,10 @@ export class AdminReportsService {
         where: { id: { in: ids('MESSAGE') } },
         select: { id: true, sender: { select: { username: true } } },
       }),
+      this.prisma.commercialPackage.findMany({
+        where: { id: { in: ids('COMMERCIAL_PACKAGE') } },
+        select: { id: true, title: true },
+      }),
     ]);
     return new Map<string, string>([
       ...users.map((u) => [u.id, `@${u.username}`] as const),
@@ -321,6 +325,7 @@ export class AdminReportsService {
       ...messages.map(
         (m) => [m.id, m.sender ? `Message from @${m.sender.username}` : 'Chat message'] as const,
       ),
+      ...packages.map((p) => [p.id, `Package: ${p.title}`] as const),
     ]);
   }
 
@@ -367,6 +372,25 @@ export class AdminReportsService {
           status: trip.hiddenAt ? `${trip.status} (hidden)` : trip.status,
           removed: trip.deletedAt !== null,
           context: `From ${trip.originName} to ${trip.destinationName}`,
+        };
+      }
+      case 'COMMERCIAL_PACKAGE': {
+        const pkg = await this.prisma.commercialPackage.findUnique({
+          where: { id },
+          select: {
+            description: true,
+            status: true,
+            pricePaise: true,
+            operator: { select: { displayName: true } },
+          },
+        });
+        if (!pkg) return missing;
+        return {
+          exists: true,
+          text: pkg.description,
+          status: pkg.status,
+          removed: pkg.status === 'ARCHIVED',
+          context: `Sold by ${pkg.operator.displayName}, ₹${pkg.pricePaise / 100} per person`,
         };
       }
       case 'COMMUNITY': {

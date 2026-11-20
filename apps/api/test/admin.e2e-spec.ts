@@ -576,6 +576,7 @@ describe('admin and moderation (e2e)', () => {
     beforeAll(async () => {
       const operator = await prisma().commercialOperator.create({
         data: {
+          category: 'TREKKING',
           ownerUserId: ids.carol,
           slug: `${prefix}-tours`,
           legalName: 'E2E Test Tours (not a real business)',
@@ -683,6 +684,7 @@ describe('admin and moderation (e2e)', () => {
 
       const own = await prisma().commercialOperator.create({
         data: {
+          category: 'TREKKING',
           ownerUserId: ids.ops,
           slug: `${prefix}-own`,
           legalName: 'E2E Own Operator',

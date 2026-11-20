@@ -23,7 +23,14 @@ export const PersonSummarySchema = z.object({
 export type PersonSummary = z.infer<typeof PersonSummarySchema>;
 
 /** MESSAGE reports may be filed only by members of that chat. */
-export const ReportTargetTypeSchema = z.enum(['USER', 'TRIP', 'COMMUNITY', 'POST', 'MESSAGE']);
+export const ReportTargetTypeSchema = z.enum([
+  'USER',
+  'TRIP',
+  'COMMUNITY',
+  'POST',
+  'MESSAGE',
+  'COMMERCIAL_PACKAGE',
+]);
 export type ReportTargetType = z.infer<typeof ReportTargetTypeSchema>;
 export const ReportReasonSchema = z.enum([
   'HARASSMENT',

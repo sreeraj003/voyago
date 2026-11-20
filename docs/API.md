@@ -376,6 +376,59 @@ texted when SMS is available (`smsAvailable`), with the trip, a map link and the
 112; the response says how many were texted. Voyago does not contact emergency services, and the
 response carries `emergencyNumber` for the app to show. Closing an alert clears its location.
 
+### Commercial operators and packages
+
+Paid, guided experiences (packages) sold by businesses that Voyago staff have verified. They are
+kept apart from free community trips: separate routes, separate tables, and every listing carries
+`commercial: true` and the business's name and verification. Voyago does not sell passenger
+transport. Bookings and payment come in milestone 13; until then `bookingOpen` is `false`.
+
+**My business (`/me/operator`)**
+
+| Method | Path                                    | Success | Description                                                                                                                                                                       |
+| ------ | --------------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/me/operator`                          | 200     | My business with `missing[]`, `inReview`, `canSubmit`, `canPublish`. 404 without one.                                                                                             |
+| POST   | `/me/operator`                          | 201     | `{ displayName, legalName, category, address, businessEmail and/or businessPhone, gstin?, website?, description?, acceptTerms: true }`. One per member (409); GSTIN unique (409). |
+| PATCH  | `/me/operator`                          | 200     | Any of the same fields. A verified business can't change `legalName` or `gstin` (409).                                                                                            |
+| GET    | `/me/operator/dashboard`                | 200     | Status, package counts, bookings (read-only), questions, views and answer rate.                                                                                                   |
+| POST   | `/me/operator/documents/signature`      | 201     | Signed Cloudinary upload for one private document (PDF, JPG or PNG, 10 MB). 503 without Cloudinary keys.                                                                          |
+| POST   | `/me/operator/documents`                | 201     | `{ kind, documentId, fileName }`. The upload must be the member's own and exist (checked with Cloudinary); at most 10.                                                            |
+| DELETE | `/me/operator/documents/:id`            | 200     | Remove a pending or rejected document (accepted ones stay).                                                                                                                       |
+| POST   | `/me/operator/submit`                   | 200     | Send for review. 409 when something is missing, already in review, verified or suspended.                                                                                         |
+| GET    | `/me/operator/packages`                 | 200     | My packages with `publishIssues[]`, `actions[]`, views and question counts.                                                                                                       |
+| POST   | `/me/operator/packages`                 | 201     | Create a draft (any business except a suspended one). Fields below.                                                                                                               |
+| POST   | `/me/operator/packages/photo-signature` | 201     | Signed upload for one package photo.                                                                                                                                              |
+| GET    | `/me/operator/packages/:id`             | 200     | One of my packages, with the exact meeting point.                                                                                                                                 |
+| PATCH  | `/me/operator/packages/:id`             | 200     | Drafts only (409 "Unpublish this package to edit it"). Cross-field rules apply to the merged result.                                                                              |
+| POST   | `/me/operator/packages/:id/publish`     | 200     | 409 unless the business is `VERIFIED` and the package is complete with a future start.                                                                                            |
+| POST   | `/me/operator/packages/:id/unpublish`   | 200     | Back to draft; 409 while anyone holds a booking.                                                                                                                                  |
+| POST   | `/me/operator/packages/:id/archive`     | 200     | Off sale for good; 409 while anyone holds a booking.                                                                                                                              |
+| GET    | `/me/operator/questions`                | 200     | Paginated questions on my packages, with who asked; `unanswered=true` to filter.                                                                                                  |
+| POST   | `/package-questions/:id/answer`         | 200     | `{ answer }`. Answers are public; the asker is notified.                                                                                                                          |
+| POST   | `/package-questions/:id/hide`           | 200     | Hide spam or abuse from everyone else.                                                                                                                                            |
+
+Package fields: `mode`, `activityType` (rides are `MOTORCYCLE_RIDE`, travel uses the others),
+`title`, `description?`, `destination { name, point }`, `meetingPoint { name, point }`, `startsAt`,
+`endsAt` (after the start, at most 60 days), `pricePaise` (whole paise, ₹1 to ₹10,00,000, the
+total per person including taxes), `currency` (`INR`), `capacity` (1 to 200), `inclusions` (at
+least one), `exclusions`, `cancellationPolicy` (20 to 2,000 characters), `photoIds` (up to 8 of
+the operator's own uploads; the first is the cover).
+
+**Browsing (any signed-in member)**
+
+| Method | Path                      | Success | Description                                                                                                            |
+| ------ | ------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/packages`               | 200     | Paginated cards on sale (published, verified business, future start). Filters `q`, `mode`, `activityType`, `operator`. |
+| GET    | `/packages/:id`           | 200     | Full terms: price, dates, seats left, inclusions, exclusions, cancellation policy, approximate meeting point.          |
+| GET    | `/packages/:id/questions` | 200     | Answered questions (no asker names) plus my own.                                                                       |
+| POST   | `/packages/:id/questions` | 201     | `{ question }` (5–500). Not on your own package (403); 3 per package and 20 a day (429).                               |
+| GET    | `/operators/:slug`        | 200     | A verified business's public page and its packages on sale.                                                            |
+
+A package that is not on sale is 404 to everyone except its business and moderators. The meeting
+point is rounded to about a kilometre (`approximate: true`) for everyone but the business. The
+business's contact details, address and GSTIN are never in public responses. Views are counted
+once a day per member. Packages can be reported with `targetType: COMMERCIAL_PACKAGE`.
+
 ### Admin and moderation (`/api/v1/admin`)
 
 Staff only. Every route declares a permission and is checked on the server against the caller's
@@ -426,6 +479,8 @@ buttons by the same table, but that is never the authorization.
 | POST   | `/admin/operators/:id/documents/:docId/link`   | `operators.documents` | `{ url, expiresAt }`: a five-minute signed Cloudinary download link, recorded in the audit log first. 503 without Cloudinary keys.                                  |
 | POST   | `/admin/operators/:id/documents/:docId/review` | `operators.verify`    | `{ status: ACCEPTED \| REJECTED, note? }`.                                                                                                                          |
 | POST   | `/admin/operators/:id/status`                  | `operators.verify`    | `{ status: VERIFIED \| REJECTED \| SUSPENDED, reason }`. `VERIFIED` needs every document reviewed and one accepted. Nobody reviews an operator they own.            |
+| POST   | `/admin/operators/:id/packages/:pkgId/suspend` | `content.moderate`    | `{ reason }`. Takes a package off sale; the business sees the reason.                                                                                               |
+| POST   | `/admin/operators/:id/packages/:pkgId/restore` | `content.moderate`    | `{ reason }`. Lifts a suspension; the package returns to draft.                                                                                                     |
 
 Every change above writes an `audit_logs` row in the same transaction: actor, `actorType: ADMIN`,
 action (`user.suspend`, `user.restore`, `user.role_change`, `trip.hide`, `trip.unhide`,
@@ -498,7 +553,7 @@ instead of pretending to work. Keys never reach the apps.
 | GET    | `/places/autocomplete`     | Bearer | 200     | `q` (2–120 chars), `sessionToken`. Google place suggestions, India only.     |
 | GET    | `/places/:placeId`         | Bearer | 200     | `sessionToken`. Name, address and point of a suggestion.                     |
 | POST   | `/uploads/cover-signature` | Bearer | 200     | Signed fields for one direct upload of a trip cover to Cloudinary.           |
-| POST   | `/uploads/signature`       | Bearer | 200     | `{ kind: trip-cover \| community-cover \| post-photo }`. Same, by kind.      |
+| POST   | `/uploads/signature`       | Bearer | 200     | `{ kind }`: also `chat-photo`, `package-photo`, `operator-document`.         |
 
 Place search is limited to 60 requests per minute per client and biased to Bengaluru. Results are
 Google's and the app shows "Results from Google". The upload signature fixes the folder, a random

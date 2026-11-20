@@ -290,6 +290,17 @@ export class SocialService {
         if (!row) throw notFound;
         return row.authorId;
       }
+      case 'COMMERCIAL_PACKAGE': {
+        const row = await this.prisma.commercialPackage.findFirst({
+          where: { id, status: { in: ['PUBLISHED', 'SUSPENDED'] } },
+          select: { operator: { select: { ownerUserId: true } } },
+        });
+        if (!row) throw notFound;
+        if (row.operator.ownerUserId === user.id) {
+          throw new ConflictException('You cannot report your own package');
+        }
+        return row.operator.ownerUserId;
+      }
       case 'MESSAGE': {
         // Only someone in the chat can report a message from it.
         const row = await this.prisma.message.findFirst({

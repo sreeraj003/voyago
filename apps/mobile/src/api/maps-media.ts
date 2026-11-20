@@ -40,7 +40,13 @@ export function newSessionToken(): string {
   return Array.from({ length: 24 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
 }
 
-type PickedImage = { uri: string; mimeType?: string | null; fileSize?: number | null };
+type PickedImage = {
+  uri: string;
+  mimeType?: string | null;
+  fileSize?: number | null;
+  /** File name to send (documents keep theirs). */
+  name?: string | null;
+};
 
 /** A trip cover. */
 export const uploadCover = (image: PickedImage, fetchImpl: typeof fetch = fetch) =>
@@ -58,7 +64,8 @@ export async function uploadImage(
 ): Promise<string> {
   const signature = await getUploadSignature(kind);
   if (image.fileSize && image.fileSize > signature.maxBytes) {
-    throw new Error(`Choose an image under ${Math.round(signature.maxBytes / 1024 / 1024)} MB`);
+    const what = kind === 'operator-document' ? 'a file' : 'an image';
+    throw new Error(`Choose ${what} under ${Math.round(signature.maxBytes / 1024 / 1024)} MB`);
   }
   const form = new FormData();
   for (const [key, value] of Object.entries(signature.fields)) form.append(key, value);
@@ -68,9 +75,15 @@ export async function uploadImage(
     form.append('file', await (await fetchImpl(image.uri)).blob());
   } else {
     // React Native's FormData accepts a file descriptor object.
-    form.append('file', { uri: image.uri, name: 'cover', type } as unknown as Blob);
+    form.append('file', { uri: image.uri, name: image.name ?? 'cover', type } as unknown as Blob);
   }
   const res = await fetchImpl(signature.uploadUrl, { method: 'POST', body: form });
-  if (!res.ok) throw new Error('The image could not be uploaded. Try a JPG, PNG or WebP photo.');
+  if (!res.ok) {
+    throw new Error(
+      kind === 'operator-document'
+        ? 'The file could not be uploaded. Try a PDF, JPG or PNG under 10 MB.'
+        : 'The image could not be uploaded. Try a JPG, PNG or WebP photo.',
+    );
+  }
   return signature.imageId;
 }

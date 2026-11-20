@@ -88,4 +88,16 @@ export const adminApi = {
     post(`/admin/operators/${id}/documents/${documentId}/review`, input, AdminOperatorDetailSchema),
   setOperatorStatus: (id: string, input: SetOperatorStatusInput) =>
     post(`/admin/operators/${id}/status`, input, AdminOperatorDetailSchema),
+  suspendPackage: (id: string, packageId: string, reason: string) =>
+    post(
+      `/admin/operators/${id}/packages/${packageId}/suspend`,
+      { reason },
+      AdminOperatorDetailSchema,
+    ),
+  restorePackage: (id: string, packageId: string, reason: string) =>
+    post(
+      `/admin/operators/${id}/packages/${packageId}/restore`,
+      { reason },
+      AdminOperatorDetailSchema,
+    ),
 };

@@ -86,4 +86,74 @@ describe('App', () => {
       await screen.findByRole('heading', { name: 'Not available for your role' }),
     ).toBeInTheDocument();
   });
+
+  it('lets a super admin suspend an operator package with a reason', async () => {
+    const OPERATOR_ID = '22222222-2222-4222-8222-222222222222';
+    const PACKAGE_ID = '33333333-3333-4333-8333-333333333333';
+    const owner = { id: STAFF_ID, username: 'ravi', displayName: 'Ravi', role: 'USER' };
+    const detail = (status: 'PUBLISHED' | 'SUSPENDED') => ({
+      status: 200,
+      body: {
+        data: {
+          id: OPERATOR_ID,
+          displayName: 'Ghats Treks',
+          legalName: 'Ghats Treks Pvt Ltd',
+          slug: 'ghats-treks',
+          owner,
+          verificationStatus: 'VERIFIED',
+          submittedAt: null,
+          documentCount: 0,
+          pendingDocumentCount: 0,
+          createdAt: '2026-11-01T00:00:00.000Z',
+          gstin: null,
+          verificationNote: null,
+          verifiedAt: null,
+          verifiedBy: null,
+          documents: [],
+          packages: [
+            {
+              id: PACKAGE_ID,
+              title: 'Kudremukh weekend trek',
+              status,
+              startsAt: '2026-12-05T00:30:00.000Z',
+              pricePaise: 349_900,
+              suspendedReason: status === 'SUSPENDED' ? 'Misleading price' : null,
+            },
+          ],
+          history: [],
+          actions: ['set_status', 'moderate_packages'],
+        },
+      },
+    });
+    const admin = {
+      status: 200,
+      body: {
+        data: {
+          id: STAFF_ID,
+          username: 'ada',
+          displayName: 'Ada',
+          role: 'SUPER_ADMIN',
+          permissions: PERMISSIONS_BY_ROLE.SUPER_ADMIN,
+        },
+      },
+    };
+    await signInAs(
+      {
+        'GET /admin/me': admin,
+        [`GET /admin/operators/${OPERATOR_ID}`]: detail('PUBLISHED'),
+        [`POST /admin/operators/${OPERATOR_ID}/packages/${PACKAGE_ID}/suspend`]:
+          detail('SUSPENDED'),
+      },
+      `/operators/${OPERATOR_ID}`,
+    );
+    const row = (await screen.findByText('Kudremukh weekend trek')).closest('tr')!;
+    expect(within(row).getByText('₹3,499')).toBeInTheDocument();
+    fireEvent.click(within(row).getByRole('button', { name: 'Suspend' }));
+    fireEvent.change(within(row).getByPlaceholderText('Reason (saved in the audit log)'), {
+      target: { value: 'Misleading price' },
+    });
+    fireEvent.submit(within(row).getByPlaceholderText('Reason (saved in the audit log)'));
+    expect(await screen.findByText('Suspended: Misleading price')).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'Restore' })).toBeInTheDocument();
+  });
 });

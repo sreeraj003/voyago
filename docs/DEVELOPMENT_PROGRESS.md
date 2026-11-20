@@ -16,11 +16,101 @@ verified before the next starts.
 | 09  | Chat and notifications                      | Done        |
 | 10  | Admin dashboard and moderation              | Done        |
 | 11  | Live location and safety workflows          | Done        |
-| 12  | Commercial operators and packages           | Not started |
+| 12  | Commercial operators and packages           | Done        |
 | 13  | Bookings, payments, commissions and refunds | Not started |
 | 14  | Subscriptions and monetisation              | Not started |
 | 15  | Analytics, observability and operations     | Not started |
 | 16  | Security, testing, launch readiness, deploy | Not started |
+
+---
+
+## Milestone 12: Commercial operators and packages (2026-11-20)
+
+### Implemented
+
+- **Business onboarding:** a member creates one business profile (name, legal name, category,
+  description, business email or phone, website, GSTIN, registered address) and accepts the
+  operator terms (version `2026-11`, recorded with the time). They upload private verification
+  documents (PDF, JPG or PNG up to 10 MB, straight to Cloudinary as authenticated files; the API
+  checks each upload is theirs and really exists), see what is still missing, and submit for
+  review. Uploading proves nothing: operations staff review each document and decide in the admin
+  app (milestone 10), and the owner is notified. A verified business can't change its legal name
+  or GSTIN without support.
+- **Packages:** title, description, destination, meeting point, start and end, total price per
+  person including taxes (whole paise, ₹1 to ₹10,00,000), INR, capacity (1 to 200), inclusions
+  (at least one), exclusions, cancellation policy, up to 8 photos, status. Any business except a
+  suspended one can prepare drafts; **only verified businesses can publish** (checked by the API
+  and by the database trigger). Publishing also needs a complete package with a future start
+  (database check `commercial_packages_published_complete`). A published package is locked:
+  unpublish to edit, allowed only while nobody holds a booking.
+- **Public display:** listings and the detail page always say "Paid experience", name the business
+  and whether Voyago verified it, and show the total price per person, dates, places left,
+  inclusions, exclusions and cancellation policy before any booking. The meeting point is shown to
+  about a kilometre. Business contact details, address and GSTIN are never public. A suspended or
+  rejected business's listings disappear at once. Packages live under their own routes and tables,
+  apart from community trips and their shared costs. Booking stays closed ("Booking opens soon")
+  until milestone 13.
+- **Customer questions:** members ask on the package (3 per package and 20 a day); the business is
+  notified, answers publicly (the asker's name is not shown to others) or hides spam.
+- **Operator dashboard (app):** verification status and what's missing, package counts, bookings
+  (read-only, zero until milestone 13), customer questions, listing views and answer rate.
+- **Moderation:** members can report a package; moderators suspend a package with a reason (the
+  business sees it) and restore it to draft, from the operator page in the admin app. All owner and
+  staff actions are audited.
+- **Mobile:** Explore links to "Paid experiences" (search, filter, cards), the package page with
+  terms, Q&A and reporting, the business's public page, and Profile, "My business": onboarding,
+  documents (PDF or photo picker), package editor with publish, unpublish and archive, and the
+  questions inbox. Question notifications open the right screen.
+- **No passenger transport:** guided rides are for guests on their own motorcycles; the terms and
+  the app say paid passenger transport, taxi and ride-hailing are not allowed.
+
+### Database changes
+
+Migration `20261124090000_commercial_marketplace`; see `docs/DATABASE.md`.
+
+### APIs
+
+`GET/POST/PATCH /me/operator`, `GET /me/operator/dashboard`,
+`POST /me/operator/documents/signature`, `POST /me/operator/documents`,
+`DELETE /me/operator/documents/:id`, `POST /me/operator/submit`,
+`GET/POST /me/operator/packages`, `POST /me/operator/packages/photo-signature`,
+`GET/PATCH /me/operator/packages/:id`, `POST /me/operator/packages/:id/publish|unpublish|archive`,
+`GET /me/operator/questions`, `POST /package-questions/:id/answer|hide`, `GET /packages`,
+`GET /packages/:id`, `GET/POST /packages/:id/questions`, `GET /operators/:slug`,
+`POST /admin/operators/:id/packages/:pkgId/suspend|restore`. See `docs/API.md`, "Commercial
+operators and packages".
+
+### Tests
+
+- 19 new end-to-end tests (222 in total): onboarding validation (terms, contact, PIN code,
+  GSTIN, https website, category), one business per member and unique GSTIN; documents only from
+  the owner's own existing uploads in an allowed format, no duplicates; submitting once;
+  package validation (price 0, under ₹1, fractional, over the maximum; capacity 0, 201,
+  fractional; currency; dates; ride and activity mismatch; no inclusions; short cancellation
+  policy; foreign photos); an unverified business can draft but not publish (API and database),
+  and its package is invisible and unlisted; staff verification then publishing; the public card
+  and detail show the commercial label, price, inclusions, exclusions, cancellation policy,
+  approximate meeting point, and no private business details; published packages and verified
+  legal names locked; database checks; view counting; questions, notifications, privacy of
+  askers, limits and hiding; held seats and booked packages that can't be unpublished; the
+  dashboard; reporting; moderator suspend and restore with audit; a suspended business's
+  listings hidden.
+- Unit tests: package rules, prices, onboarding input and GSTIN (shared, 10); slugs and calendar
+  days (API); package moderation in the admin app; the package form, price parsing and
+  notification routes (mobile, 49 in total).
+- Checked in the browser: dashboard, verification, publishing, the public list and page,
+  asking and answering a question.
+
+### Outstanding
+
+- Bookings, payments, refunds and the platform's commission are milestone 13; the dashboard's
+  booking numbers stay at zero until then.
+- Document and photo uploads need the Cloudinary keys (`CLOUDINARY_CLOUD_NAME`,
+  `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`); without them the app explains uploads are off.
+- The operator terms shown in the app are a plain summary written for development. They need
+  legal review before launch.
+- Moderators can suspend packages from the operator page, which needs `operators.read`; today only
+  super admins have both. Giving moderators a package view from reports is a follow-up.
 
 ---
 

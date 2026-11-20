@@ -177,6 +177,7 @@ const DATA_KEYS = [
   'communitySlug',
   'username',
   'conversationId',
+  'packageId',
 ] as const;
 
 function readData(value: unknown): AppNotification['data'] {
@@ -187,6 +188,6 @@ function readData(value: unknown): AppNotification['data'] {
     const item = record[key];
     if (typeof item === 'string') data[key] = item;
   }
-  if (record.screen === 'safety') data.screen = 'safety';
+  if (record.screen === 'safety' || record.screen === 'questions') data.screen = record.screen;
   return data;
 }

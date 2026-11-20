@@ -308,6 +308,16 @@ enum OperatorVerificationStatus {
   SUSPENDED
 }
 
+/// What kind of business an operator runs. Passenger transport is not a category.
+enum OperatorCategory {
+  TOUR_OPERATOR
+  GUIDED_RIDES
+  TREKKING
+  ADVENTURE_ACTIVITIES
+  CAMPING_AND_STAYS
+  OTHER
+}
+
 enum OperatorDocumentKind {
   BUSINESS_REGISTRATION
   GST_CERTIFICATE
@@ -458,6 +468,8 @@ model User {
   tripCheckIns        TripCheckIn[]
   sosAlerts           SosAlert[]           @relation("SosRaiser")
   resolvedSosAlerts   SosAlert[]           @relation("SosResolver")
+  packageQuestions    PackageQuestion[]    @relation("PackageQuestionAsker")
+  answeredQuestions   PackageQuestion[]    @relation("PackageQuestionAnswerer")
   auditLogs           AuditLog[]
   sessions            AuthSession[]
   identities          AuthIdentity[]
@@ -1129,6 +1141,18 @@ model CommercialOperator {
   /// Business contact details (not the owner's personal contact).
   businessEmail      String?                    @map("business_email") @db.Citext
   businessPhone      String?                    @map("business_phone") @db.VarChar(16)
+  category           OperatorCategory
+  description        String?                    @db.VarChar(2000)
+  website            String?                    @db.VarChar(200)
+  addressLine1       String?                    @map("address_line1") @db.VarChar(200)
+  addressLine2       String?                    @map("address_line2") @db.VarChar(200)
+  city               String?                    @db.VarChar(80)
+  state              String?                    @db.VarChar(80)
+  postalCode         String?                    @map("postal_code") @db.VarChar(10)
+  country            String                     @default("IN") @db.Char(2)
+  /// When the owner accepted the operator terms, and which version.
+  termsAcceptedAt    DateTime?                  @map("terms_accepted_at") @db.Timestamptz(3)
+  termsVersion       String?                    @map("terms_version") @db.VarChar(20)
   verificationStatus OperatorVerificationStatus @default(PENDING) @map("verification_status")
   verifiedAt         DateTime?                  @map("verified_at") @db.Timestamptz(3)
   verifiedById       String?                    @map("verified_by_id") @db.Uuid
@@ -1191,18 +1215,52 @@ model CommercialPackage {
   cancellationPolicy String                                 @map("cancellation_policy") @db.VarChar(2000)
   status             PackageStatus                          @default(DRAFT)
   coverImageKey      String?                                @map("cover_image_key")
+  /// Public Cloudinary ids of the package photos, in display order (at most 8).
+  imageKeys          String[]                               @default([]) @map("image_keys")
+  startsAt           DateTime?                              @map("starts_at") @db.Timestamptz(3)
+  endsAt             DateTime?                              @map("ends_at") @db.Timestamptz(3)
+  meetingPointName   String?                                @map("meeting_point_name") @db.VarChar(160)
+  meetingPoint       Unsupported("geography(Point, 4326)")? @map("meeting_point")
+  /// Detail views by people other than the operator (for the operator's summary).
+  viewCount          Int                                    @default(0) @map("view_count")
+  /// Why staff suspended the listing (status SUSPENDED).
+  suspendedReason    String?                                @map("suspended_reason") @db.VarChar(1000)
   publishedAt        DateTime?                              @map("published_at") @db.Timestamptz(3)
   createdAt          DateTime                               @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt          DateTime                               @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  operator CommercialOperator @relation(fields: [operatorId], references: [id], onDelete: Restrict)
-  trips    Trip[]
-  bookings Booking[]
+  operator  CommercialOperator @relation(fields: [operatorId], references: [id], onDelete: Restrict)
+  trips     Trip[]
+  bookings  Booking[]
+  questions PackageQuestion[]
 
   @@index([operatorId])
   @@index([status, mode])
   @@index([destination], type: Gist)
+  @@index([status, startsAt])
   @@map("commercial_packages")
+}
+
+/// A member's question about a package, answered by its operator. Answered questions are public.
+model PackageQuestion {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  packageId    String    @map("package_id") @db.Uuid
+  askerId      String    @map("asker_id") @db.Uuid
+  question     String    @db.VarChar(500)
+  answer       String?   @db.VarChar(1000)
+  answeredAt   DateTime? @map("answered_at") @db.Timestamptz(3)
+  answeredById String?   @map("answered_by_id") @db.Uuid
+  /// Hidden by the operator or staff (spam or abuse); kept for moderation.
+  hiddenAt     DateTime? @map("hidden_at") @db.Timestamptz(3)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  package    CommercialPackage @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  asker      User              @relation("PackageQuestionAsker", fields: [askerId], references: [id], onDelete: Cascade)
+  answeredBy User?             @relation("PackageQuestionAnswerer", fields: [answeredById], references: [id], onDelete: SetNull)
+
+  @@index([packageId, createdAt(sort: Desc)])
+  @@index([askerId])
+  @@map("package_questions")
 }
 
 /// A purchase of a commercial package. Community trips never have bookings (trigger-enforced).

@@ -397,4 +397,32 @@ export class AdminOperatorsController {
   ) {
     return { data: await this.operators.setStatus(actor, id, body) };
   }
+
+  @Post(':id/packages/:packageId/suspend')
+  @HttpCode(200)
+  @RequirePermission('content.moderate')
+  @ApiOperation({ summary: 'Suspend a package listing (off sale until restored)' })
+  @ApiErrorResponses(400, 404, 409)
+  async suspendPackage(
+    @CurrentActor() actor: Actor,
+    @Param('id', idPipe) id: string,
+    @Param('packageId', idPipe) packageId: string,
+    @Body() body: ReasonDto,
+  ) {
+    return { data: await this.operators.suspendPackage(actor, id, packageId, body.reason) };
+  }
+
+  @Post(':id/packages/:packageId/restore')
+  @HttpCode(200)
+  @RequirePermission('content.moderate')
+  @ApiOperation({ summary: 'Lift a suspension (the package returns to draft)' })
+  @ApiErrorResponses(400, 404, 409)
+  async restorePackage(
+    @CurrentActor() actor: Actor,
+    @Param('id', idPipe) id: string,
+    @Param('packageId', idPipe) packageId: string,
+    @Body() body: ReasonDto,
+  ) {
+    return { data: await this.operators.restorePackage(actor, id, packageId, body.reason) };
+  }
 }

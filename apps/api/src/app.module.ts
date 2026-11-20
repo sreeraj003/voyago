@@ -18,6 +18,7 @@ import { IntegrationsModule } from './integrations/integrations.module.js';
 import { RedisModule } from './redis/redis.module.js';
 import { SafetyModule } from './safety/safety.module.js';
 import { SocialModule } from './social/social.module.js';
+import { CommercialModule } from './commercial/commercial.module.js';
 import { CommunitiesModule } from './communities/communities.module.js';
 import { DiscoveryModule } from './discovery/discovery.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
@@ -99,6 +100,7 @@ export class AppModule {
         RealtimeModule,
         ChatModule,
         SafetyModule,
+        CommercialModule,
         ...extraModules,
       ],
       providers: [

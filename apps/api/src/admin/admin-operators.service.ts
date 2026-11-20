@@ -19,6 +19,7 @@ import { decodeCursor, toPage } from '../common/pagination/cursor.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { type Prisma } from '../generated/prisma/client.js';
 import { CloudinaryService } from '../integrations/cloudinary.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { AdminOverviewService } from './admin-overview.service.js';
 import { recordAudit } from './audit.js';
 import { staffPerson, staffPersonSelect } from './people.js';
@@ -69,6 +70,7 @@ export class AdminOperatorsService {
     private readonly prisma: PrismaService,
     private readonly overview: AdminOverviewService,
     private readonly cloudinary: CloudinaryService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async list(query: z.output<typeof AdminOperatorsQuerySchema>) {
@@ -125,7 +127,19 @@ export class AdminOperatorsService {
             uploadedAt: true,
             reviewedBy: { select: staffPersonSelect },
           },
-          orderBy: { uploadedAt: 'asc' },
+          orderBy: [{ uploadedAt: 'asc' }, { kind: 'asc' }, { id: 'asc' }],
+        },
+        packages: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            startsAt: true,
+            pricePaise: true,
+            suspendedReason: true,
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 100,
         },
       },
     });
@@ -135,6 +149,7 @@ export class AdminOperatorsService {
     const actions: AdminOperatorDetail['actions'] = [];
     if (canVerify) actions.push('review_documents', 'set_status');
     if (hasPermission(role, 'operators.documents')) actions.push('open_documents');
+    if (hasPermission(role, 'content.moderate')) actions.push('moderate_packages');
     return {
       ...toSummary(row),
       gstin: hasPermission(role, 'operators.documents') ? row.gstin : null,
@@ -150,6 +165,10 @@ export class AdminOperatorsService {
         reviewedBy: doc.reviewedBy ? staffPerson(doc.reviewedBy) : null,
         reviewedAt: doc.reviewedAt?.toISOString() ?? null,
         uploadedAt: doc.uploadedAt.toISOString(),
+      })),
+      packages: row.packages.map((pkg) => ({
+        ...pkg,
+        startsAt: pkg.startsAt?.toISOString() ?? null,
       })),
       history: await this.overview.historyOf('operator', id),
       actions,
@@ -255,8 +274,94 @@ export class AdminOperatorsService {
         reason: input.reason,
         metadata: { from: operator.verificationStatus, to: input.status },
       });
+      await this.notifications.notify(tx, [operator.ownerUserId], {
+        type: 'SYSTEM',
+        title:
+          input.status === 'VERIFIED'
+            ? 'Your business is verified. You can now publish packages.'
+            : input.status === 'REJECTED'
+              ? 'Your business was not verified'
+              : 'Your business was suspended',
+        body: input.status === 'VERIFIED' ? null : input.reason,
+      });
     });
     return this.get(actor, id);
+  }
+
+  /** Takes a listing off sale (it can't be published again until staff restore it). */
+  async suspendPackage(
+    actor: Actor,
+    operatorId: string,
+    packageId: string,
+    reason: string,
+  ): Promise<AdminOperatorDetail> {
+    const pkg = await this.loadPackage(operatorId, packageId);
+    if (pkg.status === 'SUSPENDED')
+      throw new ConflictException('This package is already suspended');
+    if (pkg.status === 'ARCHIVED') throw new ConflictException('This package is archived');
+    await this.prisma.$transaction(async (tx) => {
+      const changed = await tx.commercialPackage.updateMany({
+        where: { id: packageId, status: pkg.status },
+        data: { status: 'SUSPENDED', suspendedReason: reason },
+      });
+      if (changed.count === 0) {
+        throw new ConflictException('The package changed. Reload and try again.');
+      }
+      await recordAudit(tx, actor, {
+        action: 'package.suspend',
+        entityType: 'operator',
+        entityId: operatorId,
+        reason,
+        metadata: { packageId, from: pkg.status },
+      });
+      await this.notifications.notify(tx, [pkg.operator.ownerUserId], {
+        type: 'SYSTEM',
+        title: `Voyago suspended your package ${pkg.title}`,
+        body: reason,
+        data: { packageId },
+      });
+    });
+    return this.get(actor, operatorId);
+  }
+
+  /** Back to draft: the operator reviews it and publishes again. */
+  async restorePackage(
+    actor: Actor,
+    operatorId: string,
+    packageId: string,
+    reason: string,
+  ): Promise<AdminOperatorDetail> {
+    const pkg = await this.loadPackage(operatorId, packageId);
+    if (pkg.status !== 'SUSPENDED') throw new ConflictException('This package is not suspended');
+    await this.prisma.$transaction(async (tx) => {
+      await tx.commercialPackage.update({
+        where: { id: packageId },
+        data: { status: 'DRAFT', suspendedReason: null },
+      });
+      await recordAudit(tx, actor, {
+        action: 'package.restore',
+        entityType: 'operator',
+        entityId: operatorId,
+        reason,
+        metadata: { packageId },
+      });
+      await this.notifications.notify(tx, [pkg.operator.ownerUserId], {
+        type: 'SYSTEM',
+        title: `Your package ${pkg.title} can be published again`,
+        body: reason,
+        data: { packageId },
+      });
+    });
+    return this.get(actor, operatorId);
+  }
+
+  private async loadPackage(operatorId: string, packageId: string) {
+    const pkg = await this.prisma.commercialPackage.findFirst({
+      where: { id: packageId, operatorId },
+      select: { status: true, title: true, operator: { select: { ownerUserId: true } } },
+    });
+    if (!pkg) throw new NotFoundException('Package not found');
+    return pkg;
   }
 
   /** Nobody reviews an operator they own. */

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { type AdminOperatorDetail, type OperatorDocument } from '@voyago/shared';
+import { type AdminOperatorDetail, formatPaise, type OperatorDocument } from '@voyago/shared';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { adminApi } from '../admin-api';
@@ -86,6 +86,63 @@ export function OperatorDetailPage() {
         )}
         <p className="muted">
           Documents open through five-minute links, and every opening is recorded in the audit log.
+        </p>
+      </Section>
+      <Section title="Packages">
+        {operator.packages.length === 0 ? (
+          <p className="muted">No packages yet.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Package</th>
+                <th>Status</th>
+                <th>Starts</th>
+                <th>Price per person</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {operator.packages.map((pkg) => (
+                <tr key={pkg.id}>
+                  <td>
+                    {pkg.title}
+                    {pkg.suspendedReason ? (
+                      <div className="muted">Suspended: {pkg.suspendedReason}</div>
+                    ) : null}
+                  </td>
+                  <td>
+                    <Badge value={pkg.status} />
+                  </td>
+                  <td>{when(pkg.startsAt)}</td>
+                  <td>{formatPaise(pkg.pricePaise)}</td>
+                  <td>
+                    {operator.actions.includes('moderate_packages') ? (
+                      pkg.status === 'SUSPENDED' ? (
+                        <ReasonAction
+                          title="Restore"
+                          onSubmit={async (reason) =>
+                            update(await adminApi.restorePackage(operator.id, pkg.id, reason))
+                          }
+                        />
+                      ) : pkg.status === 'ARCHIVED' ? null : (
+                        <ReasonAction
+                          title="Suspend"
+                          danger
+                          onSubmit={async (reason) =>
+                            update(await adminApi.suspendPackage(operator.id, pkg.id, reason))
+                          }
+                        />
+                      )
+                    ) : null}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        <p className="muted">
+          A suspended package is off sale and returns to the operator as a draft when restored.
         </p>
       </Section>
       {canSet ? (

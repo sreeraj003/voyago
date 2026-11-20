@@ -59,6 +59,8 @@ export const UploadKindSchema = z.enum([
   'community-cover',
   'post-photo',
   'chat-photo',
+  'package-photo',
+  'operator-document',
 ]);
 export type UploadKind = z.infer<typeof UploadKindSchema>;
 export const UploadSignatureRequestSchema = z.object({ kind: UploadKindSchema });
@@ -73,6 +75,9 @@ const imageId = (folder: string) =>
 export const CommunityCoverIdSchema = imageId('community-covers');
 export const PostPhotoIdSchema = imageId('post-photos');
 export const ChatPhotoIdSchema = imageId('chat-photos');
+export const PackagePhotoIdSchema = imageId('package-photos');
+/** A private operator document (image or PDF); only staff open it, through audited links. */
+export const OperatorDocumentIdSchema = imageId('operator-docs');
 
 /** `<folder>/trip-covers/<user id>/<image uuid>`; the API also checks folder and owner. */
 export const CoverImageIdSchema = z

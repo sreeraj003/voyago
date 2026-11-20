@@ -1,6 +1,6 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { type TripCard } from '@voyago/shared';
-import { useLocalSearchParams } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { popularDestinations, searchTrips, trendingTrips } from '../../src/api/discovery';
@@ -48,6 +48,11 @@ export default function ExploreScreen() {
           { value: 'communities', label: 'Communities' },
         ]}
         onChange={setSection}
+      />
+      <Button
+        title="Paid experiences from verified businesses"
+        variant="link"
+        onPress={() => router.push('/packages')}
       />
       {section === 'communities' ? (
         <CommunityExplorer

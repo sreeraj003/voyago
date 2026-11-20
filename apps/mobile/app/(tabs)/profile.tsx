@@ -51,6 +51,11 @@ export default function ProfileScreen() {
         variant="link"
         onPress={() => router.push('/explore?tab=communities&mine=1')}
       />
+      <Button
+        title="My business (paid experiences)"
+        variant="link"
+        onPress={() => router.push('/operator')}
+      />
       <PrivacySettings />
       <Button
         title="Emergency contacts"
