@@ -110,7 +110,7 @@ export class ChatGateway implements OnApplicationBootstrap, OnApplicationShutdow
     this.realtime.io = io;
   }
 
-  onApplicationShutdown(): void {
+  async onApplicationShutdown(): Promise<void> {
     this.realtime.io = null;
     if (this.io) {
       this.io.local.disconnectSockets(true);
@@ -118,8 +118,13 @@ export class ChatGateway implements OnApplicationBootstrap, OnApplicationShutdow
       this.io.engine.close();
       this.io = null;
     }
-    for (const client of this.redisClients) client.disconnect();
+    const [pub, sub] = this.redisClients;
     this.redisClients = [];
+    // Stop hearing other instances' requests first, give answers already being prepared a moment
+    // to go out, then close the publishing connection (quit waits for queued commands).
+    if (sub) await closeGracefully(sub);
+    await new Promise((resolve) => setTimeout(resolve, ANSWER_GRACE_MS).unref());
+    if (pub) await closeGracefully(pub);
   }
 
   private async authenticate(socket: AnySocket): Promise<void> {
@@ -306,5 +311,37 @@ export class ChatGateway implements OnApplicationBootstrap, OnApplicationShutdow
     }
     this.logger.error(`Socket event failed for ${socket.data.userId}: ${(error as Error).message}`);
     return { status: 500, message: 'Something went wrong' };
+  }
+}
+
+/** How long shutdown lets answers to other instances' requests finish before closing. */
+const ANSWER_GRACE_MS = 100;
+/** How long shutdown waits for a still-connecting Redis connection before dropping it. */
+const CLOSE_WAIT_MS = 1_000;
+
+/**
+ * Lets queued commands (subscriptions, answers to other instances) finish before closing.
+ * Dropping a connection that still has queued commands rejects them inside the adapter, where
+ * nothing handles the error.
+ */
+async function closeGracefully(client: Redis): Promise<void> {
+  if (
+    client.status === 'connecting' ||
+    client.status === 'connect' ||
+    client.status === 'reconnecting'
+  ) {
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, CLOSE_WAIT_MS);
+      timer.unref();
+      client.once('ready', () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+  }
+  if (client.status === 'ready') {
+    await client.quit().catch(() => client.disconnect());
+  } else {
+    client.disconnect();
   }
 }
