@@ -23,6 +23,8 @@ type RequestOptions<T> = {
   schema?: z.ZodType<T>;
   /** Send the access token (default true). */
   auth?: boolean;
+  /** Parse the whole body instead of its `data` (for paginated lists). */
+  raw?: boolean;
   fetchImpl?: typeof fetch;
 };
 
@@ -74,7 +76,7 @@ export async function apiRequest<T = void>(
   path: string,
   options: RequestOptions<T> = {},
 ): Promise<T> {
-  const { method = 'GET', body, schema, auth = true, fetchImpl = fetch } = options;
+  const { method = 'GET', body, schema, auth = true, raw = false, fetchImpl = fetch } = options;
 
   const send = () => {
     const headers: Record<string, string> = { accept: 'application/json' };
@@ -95,7 +97,7 @@ export async function apiRequest<T = void>(
   if (!res.ok) throw await toError(res);
   if (!schema || res.status === 204) return undefined as T;
   const json = (await res.json()) as { data: unknown };
-  return schema.parse(json.data);
+  return schema.parse(raw ? json : json.data);
 }
 
 async function toError(res: Response): Promise<ApiRequestError> {

@@ -9,7 +9,7 @@ verified before the next starts.
 | 02  | Database design and migrations              | Done        |
 | 03  | Backend foundation and API conventions      | Done        |
 | 04  | Authentication and user profiles            | Done        |
-| 05  | Trip creation and lifecycle                 | Not started |
+| 05  | Trip creation and lifecycle                 | Done        |
 | 06  | Discovery and geospatial search             | Not started |
 | 07  | Join requests and participant management    | Not started |
 | 08  | Communities and social graph                | Not started |
@@ -21,6 +21,66 @@ verified before the next starts.
 | 14  | Subscriptions and monetisation              | Not started |
 | 15  | Analytics, observability and operations     | Not started |
 | 16  | Security, testing, launch readiness, deploy | Not started |
+
+---
+
+## Milestone 05: Trip creation and lifecycle (2026-11-20)
+
+### Implemented
+
+- **Trip engine** (`apps/api/src/trips`): create (draft, organiser added as first participant),
+  view, edit, delete draft, publish, start, complete, cancel, and "my trips" with cursor
+  pagination. Both modes share one model; Ride is always a motorcycle ride.
+- **Lifecycle** in `@voyago/shared` (`TRIP_TRANSITIONS`, `canTransition`) and enforced only by the
+  API with conditional updates (a concurrent change returns 409). `FULL` follows capacity
+  (`syncCapacityStatus`, reused by joining in milestone 07). An expiry job marks published trips
+  that never started as `EXPIRED` 24 hours after departure.
+- **Validation:** shared `tripRuleIssues` / `departureIssue` (dates, capacity, mode vs activity,
+  engine size, stop times) used by the app for instant feedback and by the API after merging edits.
+- **Locking:** mode/activity fixed after publishing; only the description after start; nothing
+  after the trip ends.
+- **Access and privacy:** drafts organiser-only, private trips participants-only, blocks hide trips
+  both ways, exact meeting point only for participants (others get it rounded to about 1 km).
+- **Moderation:** moderators and admins can view and cancel any trip; each moderator cancel writes
+  an `audit_logs` row with the request id.
+- **Free vs commercial:** the API only creates `COMMUNITY_FREE` trips and ignores client-sent
+  `tripType`/`status`/`organiserId`; commercial departures cannot be changed through these routes.
+  No payment, seat sales or driver matching.
+- **Honest estimates:** distance and duration are labelled as the organiser's estimates; no route
+  is computed. Budget is a per-person cost-sharing estimate.
+- **Mobile:** Create tab lists your trips; a 4-step create flow (mode and details → route, dates and
+  stops editor → group settings → preview); trip detail with status and the actions the API
+  allows (publish, start, complete, edit, cancel with reason, delete draft); edit reuses the flow
+  and sends only changed fields, or only the description once the trip has started.
+
+### Database changes
+
+Migration `20261120090000_trip_lifecycle`; see `docs/DATABASE.md`.
+
+### APIs
+
+9 trip routes; see `docs/API.md` → Trips.
+
+### Tests
+
+- API e2e: 88 total (14 new in `trips.e2e-spec.ts`): ownership, invalid dates and capacity,
+  mode/activity, coordinates, stop times, invalid transitions, publish with past departure,
+  editing after start, mode lock, capacity vs participants, FULL ⇄ PUBLISHED, drafts and private
+  access, approximate origin, blocks, moderator cancel with audit row, expiry job, commercial
+  separation (seeded commercial departure), my-trips pagination.
+- Unit: lifecycle table and rules (shared), access and allowed actions (API), form parsing and
+  error mapping (mobile).
+- Manual: Expo web against the live API: create a ride with a stop, publish, edit, cancel, list.
+
+### Outstanding
+
+- **Cover images** need object storage (signed uploads); the field is returned as `null`.
+- **Places** are typed as name plus coordinates. A map picker and geocoding need a maps provider
+  (for example Google Maps or Mapbox) and an API key. Dates are typed (`YYYY-MM-DD HH:MM`, device
+  time zone) until a native date picker is added.
+- Route distance and duration from a routing provider (labelled estimates until then).
+- The expiry job runs in-process every 15 minutes; a job runner arrives in milestone 15.
+- Discovery of public trips is milestone 06; joining is milestone 07.
 
 ---
 

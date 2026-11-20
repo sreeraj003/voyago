@@ -115,15 +115,20 @@ enum TripVisibility {
   PUBLIC
   FOLLOWERS
   COMMUNITY
-  INVITE_ONLY
+  /// Visible only to the organiser, participants and moderators.
+  PRIVATE
 }
 
 enum TripStatus {
   DRAFT
   PUBLISHED
+  /// Published and at capacity; returns to PUBLISHED when a place frees up.
+  FULL
   IN_PROGRESS
   COMPLETED
   CANCELLED
+  /// Published but never started; set by the expiry job after departure has passed.
+  EXPIRED
 }
 
 enum TripDifficulty {
@@ -511,41 +516,46 @@ model VerificationToken {
 // ─────────────────────────────────────────────────────────────────────────────
 
 model Trip {
-  id                   String                                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organiserId          String                                 @map("organiser_id") @db.Uuid
-  communityId          String?                                @map("community_id") @db.Uuid
+  id                       String                                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organiserId              String                                 @map("organiser_id") @db.Uuid
+  communityId              String?                                @map("community_id") @db.Uuid
   /// Set only for COMMERCIAL_PAID trips (enforced by a CHECK constraint).
-  commercialPackageId  String?                                @map("commercial_package_id") @db.Uuid
-  mode                 TripMode
-  activityType         ActivityType                           @map("activity_type")
-  tripType             TripType                               @default(COMMUNITY_FREE) @map("trip_type")
-  visibility           TripVisibility                         @default(PUBLIC)
-  status               TripStatus                             @default(DRAFT)
-  title                String                                 @db.VarChar(120)
-  description          String?                                @db.VarChar(5000)
-  originName           String                                 @map("origin_name") @db.VarChar(160)
+  commercialPackageId      String?                                @map("commercial_package_id") @db.Uuid
+  mode                     TripMode
+  activityType             ActivityType                           @map("activity_type")
+  tripType                 TripType                               @default(COMMUNITY_FREE) @map("trip_type")
+  visibility               TripVisibility                         @default(PUBLIC)
+  status                   TripStatus                             @default(DRAFT)
+  title                    String                                 @db.VarChar(120)
+  description              String?                                @db.VarChar(5000)
+  originName               String                                 @map("origin_name") @db.VarChar(160)
   /// Exact meeting point; only shown to approved participants. Nullable while DRAFT.
-  origin               Unsupported("geography(Point, 4326)")?
-  destinationName      String                                 @map("destination_name") @db.VarChar(160)
-  destination          Unsupported("geography(Point, 4326)")?
-  departureAt          DateTime                               @map("departure_at") @db.Timestamptz(3)
-  returnAt             DateTime?                              @map("return_at") @db.Timestamptz(3)
-  minParticipants      Int                                    @default(1) @map("min_participants") @db.SmallInt
-  maxParticipants      Int                                    @map("max_participants") @db.SmallInt
+  origin                   Unsupported("geography(Point, 4326)")?
+  destinationName          String                                 @map("destination_name") @db.VarChar(160)
+  destination              Unsupported("geography(Point, 4326)")?
+  departureAt              DateTime                               @map("departure_at") @db.Timestamptz(3)
+  returnAt                 DateTime?                              @map("return_at") @db.Timestamptz(3)
+  minParticipants          Int                                    @default(1) @map("min_participants") @db.SmallInt
+  maxParticipants          Int                                    @map("max_participants") @db.SmallInt
   /// Per-person cost-sharing estimate for community trips. Not a price; nothing is charged.
-  estimatedBudgetPaise Int?                                   @map("estimated_budget_paise")
-  currency             String                                 @default("INR") @db.Char(3)
-  estimatedDistanceKm  Int?                                   @map("estimated_distance_km")
-  minEngineCc          Int?                                   @map("min_engine_cc") @db.SmallInt
-  difficulty           TripDifficulty?
-  approvalRequired     Boolean                                @default(true) @map("approval_required")
-  coverImageKey        String?                                @map("cover_image_key")
-  publishedAt          DateTime?                              @map("published_at") @db.Timestamptz(3)
-  cancelledAt          DateTime?                              @map("cancelled_at") @db.Timestamptz(3)
-  cancellationReason   String?                                @map("cancellation_reason") @db.VarChar(500)
-  createdAt            DateTime                               @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt            DateTime                               @updatedAt @map("updated_at") @db.Timestamptz(3)
-  deletedAt            DateTime?                              @map("deleted_at") @db.Timestamptz(3)
+  estimatedBudgetPaise     Int?                                   @map("estimated_budget_paise")
+  currency                 String                                 @default("INR") @db.Char(3)
+  /// Organiser's estimate, not a routing result. Labelled as such in the API and apps.
+  estimatedDistanceKm      Int?                                   @map("estimated_distance_km")
+  /// Organiser's estimate in minutes, not a routing result.
+  estimatedDurationMinutes Int?                                   @map("estimated_duration_minutes")
+  minEngineCc              Int?                                   @map("min_engine_cc") @db.SmallInt
+  difficulty               TripDifficulty?
+  approvalRequired         Boolean                                @default(true) @map("approval_required")
+  coverImageKey            String?                                @map("cover_image_key")
+  publishedAt              DateTime?                              @map("published_at") @db.Timestamptz(3)
+  startedAt                DateTime?                              @map("started_at") @db.Timestamptz(3)
+  completedAt              DateTime?                              @map("completed_at") @db.Timestamptz(3)
+  cancelledAt              DateTime?                              @map("cancelled_at") @db.Timestamptz(3)
+  cancellationReason       String?                                @map("cancellation_reason") @db.VarChar(500)
+  createdAt                DateTime                               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime                               @updatedAt @map("updated_at") @db.Timestamptz(3)
+  deletedAt                DateTime?                              @map("deleted_at") @db.Timestamptz(3)
 
   organiser         User               @relation("TripOrganiser", fields: [organiserId], references: [id], onDelete: Restrict)
   community         Community?         @relation(fields: [communityId], references: [id], onDelete: SetNull)

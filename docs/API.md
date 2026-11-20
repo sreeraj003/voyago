@@ -72,6 +72,45 @@ orchestrators read them directly.
 }
 ```
 
+### Trips
+
+| Method | Path                  | Auth   | Success | Description                                                                   |
+| ------ | --------------------- | ------ | ------- | ----------------------------------------------------------------------------- |
+| POST   | `/trips`              | Bearer | 201     | Create a free community trip as a `DRAFT`. The organiser joins it.            |
+| GET    | `/trips/:id`          | Bearer | 200     | Trip details, with `viewer.actions` (what the caller may do now).             |
+| PATCH  | `/trips/:id`          | Bearer | 200     | Edit (organiser). `stops` replaces the list. See locking rules below.         |
+| DELETE | `/trips/:id`          | Bearer | 204     | Delete a draft. Published trips are cancelled instead.                        |
+| POST   | `/trips/:id/publish`  | Bearer | 200     | `DRAFT` → `PUBLISHED` (or `FULL`). Departure must be in the future.           |
+| POST   | `/trips/:id/start`    | Bearer | 200     | → `IN_PROGRESS`, from 2 hours before departure.                               |
+| POST   | `/trips/:id/complete` | Bearer | 200     | `IN_PROGRESS` → `COMPLETED`.                                                  |
+| POST   | `/trips/:id/cancel`   | Bearer | 200     | `{ reason }`. Organiser, or a moderator/admin (audit logged).                 |
+| GET    | `/me/trips`           | Bearer | 200     | Trips I organise or joined. `role=organising\|joined\|all`, `status`, cursor. |
+
+**Lifecycle** (`TRIP_TRANSITIONS` in `@voyago/shared`, enforced by the API; the client never sets
+`status`): `DRAFT → PUBLISHED ⇄ FULL → IN_PROGRESS → COMPLETED`, with `CANCELLED` (from any
+non-terminal state) and `EXPIRED` (published trips not started 24 hours after departure, set by a
+job every 15 minutes). `FULL` follows capacity automatically. Any other change returns 409.
+
+**Rules:** departure in the future (and within 2 years) when set or published; return after
+departure and at most 60 days later; 2 to 500 people (organiser included), minimum ≤ maximum,
+maximum not below the people already on the trip; Ride mode is always `MOTORCYCLE_RIDE` and
+engine size applies to rides only; up to 25 stops with valid coordinates and arrival times after
+departure. Rule failures return 400 with `details`.
+
+**Locking:** mode and activity are fixed once published. Once a trip has started (status or
+departure time), only `description` can change; finished trips cannot change at all.
+
+**Access:** drafts are visible only to their organiser; `PRIVATE` trips only to participants;
+blocked users in either direction get 404; moderators and admins see everything. The exact meeting
+point goes to participants only; others get `origin.approximate: true` with the point rounded to
+about 1 km. Distance and duration are the organiser's estimates (`estimatesSource: "ORGANISER"`);
+Voyago does not compute routes yet. The budget is a per-person cost-sharing estimate in paise,
+never a price.
+
+**Free vs commercial:** these endpoints only create `COMMUNITY_FREE` trips; `tripType`, `status`
+and `organiserId` in a request are ignored. `COMMERCIAL_PAID` departures cannot be edited or
+cancelled here (409); they are managed from their package (milestone 12).
+
 ## Success responses
 
 | Case              | Status | Body                                                                  |

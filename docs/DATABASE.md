@@ -242,3 +242,14 @@ fixed id beginning `5eed0000`, so re-running changes nothing. The `dev_*` accoun
 - CHECK constraints: country format, list limits, group-size range, session hash format and expiry,
   OTP phone in E.164, OTP attempts 0 to 10, token hash formats.
 - Cleanup of expired sessions, OTP challenges and tokens is a scheduled job (milestone 15).
+
+## Milestone 05 changes (`20261120090000_trip_lifecycle`)
+
+- `TripStatus` gains `FULL` and `EXPIRED`; `TripVisibility` value `INVITE_ONLY` is renamed
+  `PRIVATE` (the spec's term). `FOLLOWERS` and `COMMUNITY` stay for milestone 08.
+- `trips`: added `estimated_duration_minutes` (organiser's estimate, 1 to 86,400), `started_at`,
+  `completed_at`.
+- CHECK constraints: cancelled ⇔ `cancelled_at`, completed ⇔ `completed_at`, started/completed
+  trips have `started_at`, title not blank, duration range.
+- Route data (`trips.origin/destination`, `trip_stops`) is planning data only. Live location is a
+  separate store (Redis, milestone 11) and never written to these tables.
