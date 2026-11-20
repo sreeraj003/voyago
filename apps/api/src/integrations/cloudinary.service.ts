@@ -16,7 +16,14 @@ const FOLDERS: Record<UploadKind, string> = {
   'trip-cover': 'trip-covers',
   'community-cover': 'community-covers',
   'post-photo': 'post-photos',
+  'chat-photo': 'chat-photos',
 };
+/**
+ * Chat photos are private: uploaded as Cloudinary "authenticated" assets, which are served only
+ * through URLs signed by this server, and those URLs are given only to the chat's members.
+ */
+const deliveryType = (kind: UploadKind) => (kind === 'chat-photo' ? 'authenticated' : 'upload');
+const CHAT_PHOTO_TRANSFORM = 'c_limit,w_1600,q_auto,f_auto';
 
 /**
  * Cloudinary for trip cover images. The app uploads straight to Cloudinary with a signature
@@ -52,11 +59,12 @@ export class CloudinaryService {
   signUpload(userId: string, kind: UploadKind, now = Date.now()): UploadSignature {
     this.assertEnabled();
     const imageId = `${this.folderFor(userId, kind)}/${randomUUID()}`;
-    const params = {
+    const params: Record<string, string> = {
       allowed_formats: COVER_FORMATS,
       public_id: imageId,
       timestamp: String(Math.floor(now / 1000)),
     };
+    if (deliveryType(kind) === 'authenticated') params.type = 'authenticated';
     return {
       uploadUrl: `https://api.cloudinary.com/v1_1/${this.config.CLOUDINARY_CLOUD_NAME}/image/upload`,
       fields: { ...params, api_key: this.config.CLOUDINARY_API_KEY, signature: this.sign(params) },
@@ -104,7 +112,7 @@ export class CloudinaryService {
     let res: Response;
     try {
       res = await this.fetchImpl(
-        `https://api.cloudinary.com/v1_1/${cloud}/resources/image/upload/${imageId}`,
+        `https://api.cloudinary.com/v1_1/${cloud}/resources/image/${deliveryType(kind)}/${imageId}`,
         {
           headers: { authorization: `Basic ${Buffer.from(`${key}:${secret}`).toString('base64')}` },
           signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
@@ -133,6 +141,17 @@ export class CloudinaryService {
   photoUrl(imageId: string): string | null {
     if (!this.config.CLOUDINARY_CLOUD_NAME) return null;
     return `https://res.cloudinary.com/${this.config.CLOUDINARY_CLOUD_NAME}/image/upload/c_limit,w_1600,q_auto,f_auto/${imageId}`;
+  }
+
+  /** A signed link to a private chat photo. Null when Cloudinary isn't configured. */
+  chatPhotoUrl(imageId: string): string | null {
+    if (!this.enabled || !this.config.CLOUDINARY_CLOUD_NAME) return null;
+    const toSign = `${CHAT_PHOTO_TRANSFORM}/${imageId}`;
+    const signature = createHash('sha1')
+      .update(toSign + this.config.CLOUDINARY_API_SECRET)
+      .digest('base64url')
+      .slice(0, 8);
+    return `https://res.cloudinary.com/${this.config.CLOUDINARY_CLOUD_NAME}/image/authenticated/s--${signature}--/${toSign}`;
   }
 
   private assertEnabled(): void {

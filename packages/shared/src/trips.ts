@@ -219,6 +219,8 @@ export const TripActionSchema = z.enum([
   'leave',
   /** Organiser and co-organisers: review requests, invite, remove participants. */
   'manage_people',
+  /** Open the trip's group chat (people on the trip). */
+  'chat',
 ]);
 export type TripAction = z.infer<typeof TripActionSchema>;
 

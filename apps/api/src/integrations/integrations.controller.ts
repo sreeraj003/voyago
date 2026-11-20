@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import {
@@ -11,6 +11,7 @@ import { type AuthUser, CurrentUser } from '../common/auth/current-user.decorato
 import { ApiErrorResponses } from '../common/openapi/zod-openapi.js';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe.js';
 import { createZodDto } from '../common/validation/zod-dto.js';
+import { PUSH_SENDER, type PushSender } from '../notifications/push/push-sender.js';
 import { CloudinaryService } from './cloudinary.service.js';
 import { GoogleMapsService } from './google-maps.service.js';
 
@@ -26,6 +27,7 @@ export class IntegrationsController {
   constructor(
     private readonly maps: GoogleMapsService,
     private readonly cloudinary: CloudinaryService,
+    @Inject(PUSH_SENDER) private readonly push: PushSender,
   ) {}
 
   @Get('features')
@@ -36,6 +38,7 @@ export class IntegrationsController {
         placeSearch: this.maps.enabled,
         routing: this.maps.enabled,
         coverUploads: this.cloudinary.enabled,
+        push: this.push.enabled,
       },
     };
   }

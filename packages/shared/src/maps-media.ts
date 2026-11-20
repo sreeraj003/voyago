@@ -37,6 +37,8 @@ export const FeaturesSchema = z.object({
   placeSearch: z.boolean(),
   routing: z.boolean(),
   coverUploads: z.boolean(),
+  /** Push notifications can be delivered (a push provider is configured on the server). */
+  push: z.boolean(),
 });
 export type Features = z.infer<typeof FeaturesSchema>;
 
@@ -52,7 +54,12 @@ export const UploadSignatureSchema = z.object({
 export type UploadSignature = z.infer<typeof UploadSignatureSchema>;
 
 /** What an upload is for; each kind has its own folder. */
-export const UploadKindSchema = z.enum(['trip-cover', 'community-cover', 'post-photo']);
+export const UploadKindSchema = z.enum([
+  'trip-cover',
+  'community-cover',
+  'post-photo',
+  'chat-photo',
+]);
 export type UploadKind = z.infer<typeof UploadKindSchema>;
 export const UploadSignatureRequestSchema = z.object({ kind: UploadKindSchema });
 
@@ -65,6 +72,7 @@ const imageId = (folder: string) =>
     );
 export const CommunityCoverIdSchema = imageId('community-covers');
 export const PostPhotoIdSchema = imageId('post-photos');
+export const ChatPhotoIdSchema = imageId('chat-photos');
 
 /** `<folder>/trip-covers/<user id>/<image uuid>`; the API also checks folder and owner. */
 export const CoverImageIdSchema = z

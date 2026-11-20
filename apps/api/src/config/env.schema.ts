@@ -105,6 +105,18 @@ export const EnvSchema = z
     DISCOVERY_DEFAULT_RADIUS_KM: z.coerce.number().int().min(1).max(500).default(25),
     /** Largest radius a member may ask for. */
     DISCOVERY_MAX_RADIUS_KM: z.coerce.number().int().min(1).max(500).default(200),
+
+    // ── Chat and push (milestone 09) ───────────────────────────────────────────
+    /** Messages one member may send per minute, across all chats. */
+    CHAT_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).max(600).default(30),
+    /**
+     * `none`: in-app notifications only. `dev`: pushes are logged and kept in memory for tests;
+     * refused in production. `expo`: Expo's push service, which delivers through FCM (Android)
+     * and APNs (iOS) using the credentials uploaded to your Expo project.
+     */
+    PUSH_PROVIDER: z.enum(['none', 'dev', 'expo']).default('none'),
+    /** Optional: required only if "enhanced push security" is turned on in the Expo project. */
+    EXPO_ACCESS_TOKEN: z.string().default(''),
   })
   .superRefine((env, ctx) => {
     const cloudinary = [
@@ -149,7 +161,7 @@ export const EnvSchema = z
     }
     if (env.NODE_ENV !== 'production') return;
     // Development-only adapters can never be enabled in production.
-    for (const key of ['SMS_PROVIDER', 'EMAIL_PROVIDER'] as const) {
+    for (const key of ['SMS_PROVIDER', 'EMAIL_PROVIDER', 'PUSH_PROVIDER'] as const) {
       if (env[key] === 'dev') {
         ctx.addIssue({
           code: 'custom',

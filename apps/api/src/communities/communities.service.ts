@@ -24,6 +24,7 @@ import {
 import { type z } from 'zod';
 import { type AuthUser } from '../common/auth/current-user.decorator.js';
 import { decodeCursor, encodeCursor, toPage } from '../common/pagination/cursor.js';
+import { RealtimeService } from '../chat/realtime.service.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { CloudinaryService } from '../integrations/cloudinary.service.js';
@@ -62,6 +63,7 @@ export class CommunitiesService {
     private readonly cloudinary: CloudinaryService,
     private readonly notifications: NotificationsService,
     private readonly posts: PostsService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   async create(user: AuthUser, input: z.output<typeof CreateCommunitySchema>): Promise<Community> {
@@ -251,6 +253,7 @@ export class CommunitiesService {
       data: { status: 'LEFT', role: 'MEMBER' },
     });
     if (updated.count !== 1) throw new ConflictException('You are not a member');
+    await this.realtime.leaveCommunityChat(access.community.id, user.id);
     return this.get(user, slug);
   }
 
@@ -411,6 +414,7 @@ export class CommunitiesService {
         data: { communitySlug: access.community.slug },
       });
     });
+    await this.realtime.leaveCommunityChat(access.community.id, memberId);
   }
 
   async unban(user: AuthUser, slug: string, memberId: string, requestId?: string) {

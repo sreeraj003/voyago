@@ -305,7 +305,7 @@ describe('trips (e2e)', () => {
       expect(cancelled).toMatchObject({
         status: 'CANCELLED',
         cancellationReason: 'Heavy rain forecast',
-        viewer: { actions: [] },
+        viewer: { actions: ['chat'] },
       });
       await action(alice, trip.id, 'cancel', { reason: 'Again' }).expect(409);
       await action(alice, trip.id, 'publish').expect(409);
@@ -413,7 +413,7 @@ describe('trips (e2e)', () => {
         .set('authorization', bearer(alice))
         .expect(200);
       expect(features.body).toEqual({
-        data: { placeSearch: false, routing: false, coverUploads: false },
+        data: { placeSearch: false, routing: false, coverUploads: false, push: false },
       });
       await http()
         .get('/api/v1/places/autocomplete')

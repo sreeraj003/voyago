@@ -254,6 +254,27 @@ fixed id beginning `5eed0000`, so re-running changes nothing. The `dev_*` accoun
 - Route data (`trips.origin/destination`, `trip_stops`) is planning data only. Live location is a
   separate store (Redis, milestone 11) and never written to these tables.
 
+## Milestone 09 changes (`20261121090000_chat_notifications`)
+
+The chat tables (`conversations`, `conversation_members`, `messages`) came with the initial
+schema; this migration adds what realtime chat and push need.
+
+- `MessageType` gains `ANNOUNCEMENT`. `messages.client_id` (UUID chosen by the device) with the
+  unique index `(conversation_id, sender_id, client_id)`, so a resent message is stored once.
+- `messages_content_present` rewritten: text and announcements need non-blank text and a sender,
+  photos need an attachment, system messages have no sender; deleted messages are exempt.
+  `messages_attachment_key_format` keeps photos in the sender's `chat-photos` folder;
+  `messages_body_length` caps text at 2,000 characters. (New enum values can't be used in the
+  migration that adds them, so these compare `type::text`.)
+- `notifications.push_pending_at`: the push outbox. Set when a notification is written (if a push
+  provider is configured), cleared by the push worker, with the partial index
+  `notifications_push_pending_idx`.
+- New `push_tokens` (user, Expo push token (unique, format-checked), platform `IOS`/`ANDROID`,
+  last seen). A token that signs in on another account moves to it.
+- `conversations_last_message_at_idx` (partial, chats with messages) serves the chat list.
+- Read position and mute live in `conversation_members` (`last_read_at`, `muted_until`). Group
+  membership itself is not copied there: it is read from trip participants and community members.
+
 ## Milestone 08 changes (`20261120130000_communities_social`)
 
 - Enums: `CommunityCategory`, `TripInvitationStatus` (`PENDING`, `ACCEPTED`, `DECLINED`,

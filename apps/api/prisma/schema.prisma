@@ -235,6 +235,13 @@ enum MessageType {
   TEXT
   IMAGE
   SYSTEM
+  /// Group announcement by an organiser or community moderator; highlighted and always notified.
+  ANNOUNCEMENT
+}
+
+enum PushPlatform {
+  IOS
+  ANDROID
 }
 
 enum NotificationType {
@@ -393,6 +400,7 @@ model User {
   conversationMembers ConversationMember[]
   sentMessages        Message[]
   notifications       Notification[]
+  pushTokens          PushToken[]
   reviewsWritten      Review[]             @relation("Reviewer")
   reviewsReceived     Review[]             @relation("Reviewee")
   tripInvitations     TripInvitation[]     @relation("TripInvitee")
@@ -867,6 +875,8 @@ model Message {
   type           MessageType @default(TEXT)
   body           String?     @db.VarChar(4000)
   attachmentKey  String?     @map("attachment_key")
+  /// Id the sending device chose, so a resent message (after a dropped connection) is stored once.
+  clientId       String?     @map("client_id") @db.Uuid
   createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
   editedAt       DateTime?   @map("edited_at") @db.Timestamptz(3)
   deletedAt      DateTime?   @map("deleted_at") @db.Timestamptz(3)
@@ -874,27 +884,46 @@ model Message {
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   sender       User?        @relation(fields: [senderId], references: [id], onDelete: SetNull)
 
+  @@unique([conversationId, senderId, clientId])
   @@index([conversationId, createdAt(sort: Desc), id(sort: Desc)])
   @@index([senderId])
   @@map("messages")
 }
 
 model Notification {
-  id        String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId    String           @map("user_id") @db.Uuid
-  type      NotificationType
-  title     String           @db.VarChar(160)
-  body      String?          @db.VarChar(1000)
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String           @map("user_id") @db.Uuid
+  type          NotificationType
+  title         String           @db.VarChar(160)
+  body          String?          @db.VarChar(1000)
   /// Small routing payload (ids only, no personal data).
-  data      Json?
-  readAt    DateTime?        @map("read_at") @db.Timestamptz(3)
-  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  data          Json?
+  readAt        DateTime?        @map("read_at") @db.Timestamptz(3)
+  /// Set while a push for this notification is waiting to be sent (an outbox, so a push goes out
+  /// only once the change it describes is committed). Cleared when sent or skipped.
+  pushPendingAt DateTime?        @map("push_pending_at") @db.Timestamptz(3)
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([userId, readAt])
   @@map("notifications")
+}
+
+/// A device that receives push notifications (an Expo push token, delivered through FCM or APNs).
+model PushToken {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String       @map("user_id") @db.Uuid
+  token      String       @unique @db.VarChar(255)
+  platform   PushPlatform
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastSeenAt DateTime     @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_tokens")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

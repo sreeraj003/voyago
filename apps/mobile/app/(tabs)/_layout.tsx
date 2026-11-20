@@ -1,7 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useQuery } from '@tanstack/react-query';
 import { Redirect, Tabs } from 'expo-router';
 import { type ComponentProps } from 'react';
 import { ActivityIndicator, type ColorValue, View } from 'react-native';
+import { getChatUnreadCount } from '../../src/api/chat';
+import { unreadNotificationCount } from '../../src/api/participation';
 import { useAuthStore } from '../../src/store/auth-store';
 import { useModeStore } from '../../src/store/mode-store';
 import { useTheme } from '../../src/theme/use-theme';
@@ -18,6 +21,20 @@ export default function TabsLayout() {
   const { colors } = useTheme();
   const mode = useModeStore((state) => state.mode);
   const status = useAuthStore((state) => state.status);
+  const signedIn = status === 'signedIn';
+  const chatUnread = useQuery({
+    queryKey: ['chat-unread'],
+    queryFn: getChatUnreadCount,
+    enabled: signedIn,
+    refetchInterval: 60_000,
+  });
+  const notificationUnread = useQuery({
+    queryKey: ['notifications', 'unread-count'],
+    queryFn: unreadNotificationCount,
+    enabled: signedIn,
+    refetchInterval: 60_000,
+  });
+  const inboxBadge = (chatUnread.data ?? 0) + (notificationUnread.data ?? 0);
 
   if (status === 'unknown') {
     return (
@@ -55,7 +72,11 @@ export default function TabsLayout() {
       />
       <Tabs.Screen
         name="inbox"
-        options={{ title: 'Inbox', tabBarIcon: tabIcon('chatbubbles-outline') }}
+        options={{
+          title: 'Inbox',
+          tabBarIcon: tabIcon('chatbubbles-outline'),
+          tabBarBadge: inboxBadge > 0 ? (inboxBadge > 99 ? '99+' : inboxBadge) : undefined,
+        }}
       />
       <Tabs.Screen
         name="profile"

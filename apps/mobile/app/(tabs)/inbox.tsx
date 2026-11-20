@@ -1,7 +1,10 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type AppNotification, type TripInvitation } from '@voyago/shared';
 import { router } from 'expo-router';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { listConversations } from '../../src/api/chat';
+import { useFeatures } from '../../src/api/use-features';
 import {
   listMyInvitations,
   listNotifications,
@@ -9,13 +12,117 @@ import {
   markNotificationRead,
   respondToInvitation,
 } from '../../src/api/participation';
-import { ComingSoon } from '../../src/components/ComingSoon';
+import { Choice } from '../../src/components/Choice';
+import { ConversationRow } from '../../src/components/ConversationRow';
 import { Button, FormMessage } from '../../src/components/Form';
 import { Screen } from '../../src/components/Screen';
+import { enablePush, pushState, type PushState } from '../../src/notifications/push';
 import { radius, spacing, typography } from '../../src/theme/tokens';
 import { useTheme } from '../../src/theme/use-theme';
 
+const VIEWS = [
+  { value: 'chats', label: 'Chats' },
+  { value: 'updates', label: 'Updates' },
+] as const;
+
 export default function InboxScreen() {
+  const [view, setView] = useState<'chats' | 'updates'>('chats');
+  return (
+    <Screen title="Inbox">
+      <PushPrompt />
+      <Choice label="Show" options={VIEWS} value={view} onChange={setView} />
+      {view === 'chats' ? <ChatList /> : <Updates />}
+    </Screen>
+  );
+}
+
+/** Offers push notifications when the server can send them and this phone hasn't allowed them. */
+function PushPrompt() {
+  const features = useFeatures();
+  const [state, setState] = useState<PushState | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!features.push) return;
+    let active = true;
+    void pushState().then((value) => {
+      if (active) setState(value);
+    });
+    return () => {
+      active = false;
+    };
+  }, [features.push]);
+  if (!features.push || state === null || state === 'enabled' || state === 'unsupported') {
+    return null;
+  }
+  if (state === 'not-configured') {
+    return (
+      <FormMessage tone="info">
+        Push notifications need this app build to be linked to an Expo project (EAS_PROJECT_ID).
+      </FormMessage>
+    );
+  }
+  if (state === 'denied') {
+    return (
+      <FormMessage tone="info">
+        Notifications are off for Voyago. Turn them on in your phone’s settings to hear about
+        messages and trip changes.
+      </FormMessage>
+    );
+  }
+  return (
+    <Button
+      title="Turn on notifications"
+      variant="secondary"
+      loading={busy}
+      onPress={() => {
+        setBusy(true);
+        void enablePush(true)
+          .then(setState, () => setState('off'))
+          .finally(() => setBusy(false));
+      }}
+    />
+  );
+}
+
+function ChatList() {
+  const chats = useInfiniteQuery({
+    queryKey: ['conversations'],
+    queryFn: ({ pageParam }) => listConversations(pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.page.nextCursor ?? undefined,
+  });
+  const items = chats.data?.pages.flatMap((page) => page.data) ?? [];
+  return (
+    <>
+      {chats.isPending ? <FormMessage tone="info">Loading…</FormMessage> : null}
+      {chats.isError ? (
+        <>
+          <FormMessage tone="error">Could not load your chats.</FormMessage>
+          <Button title="Try again" variant="secondary" onPress={() => void chats.refetch()} />
+        </>
+      ) : null}
+      {chats.isSuccess && items.length === 0 ? (
+        <FormMessage tone="info">
+          No chats yet. Open a trip’s group chat from the trip page, a community chat from its page,
+          or message someone from their profile.
+        </FormMessage>
+      ) : null}
+      {items.map((conversation) => (
+        <ConversationRow key={conversation.id} conversation={conversation} />
+      ))}
+      {chats.hasNextPage ? (
+        <Button
+          title="Show more"
+          variant="link"
+          loading={chats.isFetchingNextPage}
+          onPress={() => void chats.fetchNextPage()}
+        />
+      ) : null}
+    </>
+  );
+}
+
+function Updates() {
   const queryClient = useQueryClient();
   const notifications = useInfiniteQuery({
     queryKey: ['notifications'],
@@ -33,7 +140,7 @@ export default function InboxScreen() {
   const invitations = useQuery({ queryKey: ['my-invitations'], queryFn: listMyInvitations });
 
   return (
-    <Screen title="Inbox">
+    <>
       {invitations.data?.data.map((invitation) => (
         <InvitationRow key={invitation.id} invitation={invitation} />
       ))}
@@ -72,8 +179,7 @@ export default function InboxScreen() {
           onPress={() => void notifications.fetchNextPage()}
         />
       ) : null}
-      <ComingSoon feature="Trip group chat" milestone="milestone 9" />
-    </Screen>
+    </>
   );
 }
 
@@ -133,8 +239,9 @@ function NotificationRow({ item }: { item: AppNotification }) {
         queryClient.invalidateQueries({ queryKey: ['notifications'] }),
       );
     }
-    const { tripId, communitySlug, username } = item.data;
-    if (item.type === 'NEW_FOLLOWER' && username) router.push(`/users/${username}`);
+    const { tripId, communitySlug, username, conversationId } = item.data;
+    if (conversationId) router.push(`/chats/${conversationId}`);
+    else if (item.type === 'NEW_FOLLOWER' && username) router.push(`/users/${username}`);
     else if (item.type === 'JOIN_REQUEST_RECEIVED' && tripId) {
       router.push(`/trips/${tripId}/requests`);
     } else if (tripId) router.push(`/trips/${tripId}`);

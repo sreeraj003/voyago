@@ -6,6 +6,7 @@ import {
   SignInResultSchema,
 } from '@voyago/shared';
 import { z } from 'zod';
+import { runBeforeSignOut } from '../auth/sign-out-hooks';
 import { apiRequest, refreshSession, signOutLocally, storeTokens } from './http';
 
 /** Restores the session at launch from the stored refresh token. */
@@ -95,6 +96,7 @@ export const requestEmailVerification = () =>
 
 /** Revokes this device's session on the server, then forgets it locally either way. */
 export async function signOut(): Promise<void> {
+  await runBeforeSignOut();
   try {
     await apiRequest('/auth/logout', { method: 'POST' });
   } finally {

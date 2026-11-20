@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { validateEnv } from '../config/env.schema.js';
 import { CloudinaryService, COVER_MAX_BYTES } from './cloudinary.service.js';
 import { GoogleMapsService } from './google-maps.service.js';
@@ -182,5 +183,33 @@ describe('CloudinaryService', () => {
     expect(() =>
       new CloudinaryService(unconfigured, fakeFetch(200, {})).signCoverUpload(USER),
     ).toThrow('not available');
+  });
+
+  it('keeps chat photos private: authenticated uploads and signed links only', async () => {
+    const calls: Call[] = [];
+    const cloudinary = new CloudinaryService(configured, fakeFetch(200, { bytes: 10 }, calls));
+    const signed = cloudinary.signUpload(USER, 'chat-photo', 1_800_000_000_000);
+    expect(signed.imageId).toMatch(new RegExp(`^voyago-test/chat-photos/${USER}/[0-9a-f-]{36}$`));
+    expect(signed.fields.type).toBe('authenticated');
+    expect(signed.fields.signature).toBe(
+      cloudinary.sign({
+        allowed_formats: 'jpg,jpeg,png,webp',
+        public_id: signed.imageId,
+        timestamp: '1800000000',
+        type: 'authenticated',
+      }),
+    );
+    await cloudinary.assertOwnUpload(USER, signed.imageId, 'chat-photo', 'imageId');
+    expect(calls[0]?.url).toBe(
+      `https://api.cloudinary.com/v1_1/demo/resources/image/authenticated/${signed.imageId}`,
+    );
+
+    const url = cloudinary.chatPhotoUrl(signed.imageId);
+    const toSign = `c_limit,w_1600,q_auto,f_auto/${signed.imageId}`;
+    const signature = createHash('sha1').update(`${toSign}abcd`).digest('base64url').slice(0, 8);
+    expect(url).toBe(
+      `https://res.cloudinary.com/demo/image/authenticated/s--${signature}--/${toSign}`,
+    );
+    expect(new CloudinaryService(unconfigured, fakeFetch(200, {})).chatPhotoUrl('x')).toBeNull();
   });
 });

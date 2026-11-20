@@ -3,11 +3,13 @@ import { type PublicProfile } from '@voyago/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
+import { openDirectChat } from '../../src/api/chat';
 import { getMyProfile } from '../../src/api/profile';
 import { block, follow, getPublicProfile, unfollow } from '../../src/api/social';
 import { useFormError } from '../../src/auth/use-form-error';
 import { Button, FormMessage } from '../../src/components/Form';
 import { FormScreen } from '../../src/components/FormScreen';
+import { OpenChatButton } from '../../src/components/OpenChatButton';
 import { ReportForm } from '../../src/components/ReportForm';
 import { labelFor } from '../../src/trips/labels';
 import { radius, spacing, typography } from '../../src/theme/tokens';
@@ -115,6 +117,9 @@ function Profile({ profile }: { profile: PublicProfile }) {
             loading={toggle.isPending}
             onPress={() => toggle.mutate()}
           />
+          {profile.canMessage ? (
+            <OpenChatButton title="Message" open={() => openDirectChat(profile.username)} />
+          ) : null}
           {!confirmBlock ? (
             <Button title="Block" variant="link" onPress={() => setConfirmBlock(true)} />
           ) : (

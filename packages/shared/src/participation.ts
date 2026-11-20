@@ -130,6 +130,7 @@ export const NotificationSchema = z.object({
     invitationId: z.uuid().optional(),
     communitySlug: z.string().optional(),
     username: z.string().optional(),
+    conversationId: z.uuid().optional(),
   }),
   readAt: z.string().nullable(),
   createdAt: z.string(),

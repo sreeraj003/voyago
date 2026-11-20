@@ -123,6 +123,8 @@ export const PublicProfileSchema = z.object({
   motorcycles: z.array(MotorcycleSchema.omit({ nickname: true })),
   memberSince: z.string(),
   follow: FollowStateSchema,
+  /** Whether you may send this member a direct message (their message setting and blocks). */
+  canMessage: z.boolean(),
 });
 export type PublicProfile = z.infer<typeof PublicProfileSchema>;
 

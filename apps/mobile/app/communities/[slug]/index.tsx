@@ -11,10 +11,12 @@ import {
   listCommunityPosts,
   listCommunityTrips,
 } from '../../../src/api/communities';
+import { openCommunityChat } from '../../../src/api/chat';
 import { useFormError } from '../../../src/auth/use-form-error';
 import { Choice } from '../../../src/components/Choice';
 import { Button, FormMessage, TextField } from '../../../src/components/Form';
 import { FormScreen } from '../../../src/components/FormScreen';
+import { OpenChatButton } from '../../../src/components/OpenChatButton';
 import { PostCard } from '../../../src/components/PostCard';
 import { ReportForm } from '../../../src/components/ReportForm';
 import { TripSummaryCard } from '../../../src/components/TripSummaryCard';
@@ -102,6 +104,9 @@ function CommunityDetail({ community }: { community: Community }) {
           variant="secondary"
           onPress={() => router.push(`/communities/${community.slug}/edit`)}
         />
+      ) : null}
+      {viewer.status === 'ACTIVE' ? (
+        <OpenChatButton title="Community chat" open={() => openCommunityChat(community.slug)} />
       ) : null}
       {viewer.status === 'ACTIVE' ? (
         <Button

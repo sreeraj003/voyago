@@ -162,6 +162,10 @@ export function allowedActions(
     }
     if (status === 'ACTIVE' && !terminal) actions.push('leave');
   }
+  // The trip's group chat: everyone on it, and those who finished it.
+  const onTrip =
+    membership.participantStatus === 'ACTIVE' || membership.participantStatus === 'COMPLETED';
+  if ((isOrganiser || onTrip) && trip.status !== 'DRAFT') actions.push('chat');
   return actions;
 }
 

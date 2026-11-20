@@ -62,16 +62,17 @@ a short "not set up yet" note (or the API answers 503), and nothing pretends to 
 in `apps/api/.env` (or the server's secret store), never in git. The API refuses to start when a
 chosen provider is missing one of its keys, and says which one.
 
-| Feature                                | Keys in `apps/api/.env`                                                                                                          |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| Phone sign-in codes (Twilio)           | `SMS_PROVIDER=twilio`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_FROM` or `TWILIO_MESSAGING_SERVICE_SID`            |
-| Phone sign-in codes (MSG91, India DLT) | `SMS_PROVIDER=msg91`, `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_ID` (an approved OTP flow), `MSG91_OTP_VARIABLE` (default `otp`)         |
-| Email (Resend)                         | `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, `EMAIL_FROM` (a verified sender)                                                      |
-| Email (Postmark)                       | `EMAIL_PROVIDER=postmark`, `POSTMARK_SERVER_TOKEN`, `EMAIL_FROM`                                                                 |
-| Google sign-in                         | `GOOGLE_CLIENT_IDS` (comma separated OAuth client ids), plus the same ids in the app (below)                                     |
-| Apple sign-in (iOS)                    | `APPLE_CLIENT_IDS` with the bundle id `com.voyago.app`                                                                           |
-| Place search, road distance and time   | `GOOGLE_MAPS_API_KEY`: enable **Places API (New)** and **Routes API**, restrict the key to those APIs and your server's IPs      |
-| Trip, community and post photos        | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` (all three); `CLOUDINARY_FOLDER` keeps environments apart |
+| Feature                                         | Keys in `apps/api/.env`                                                                                                                                                                           |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Phone sign-in codes (Twilio)                    | `SMS_PROVIDER=twilio`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_FROM` or `TWILIO_MESSAGING_SERVICE_SID`                                                                             |
+| Phone sign-in codes (MSG91, India DLT)          | `SMS_PROVIDER=msg91`, `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_ID` (an approved OTP flow), `MSG91_OTP_VARIABLE` (default `otp`)                                                                          |
+| Email (Resend)                                  | `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, `EMAIL_FROM` (a verified sender)                                                                                                                       |
+| Email (Postmark)                                | `EMAIL_PROVIDER=postmark`, `POSTMARK_SERVER_TOKEN`, `EMAIL_FROM`                                                                                                                                  |
+| Google sign-in                                  | `GOOGLE_CLIENT_IDS` (comma separated OAuth client ids), plus the same ids in the app (below)                                                                                                      |
+| Apple sign-in (iOS)                             | `APPLE_CLIENT_IDS` with the bundle id `com.voyago.app`                                                                                                                                            |
+| Place search, road distance and time            | `GOOGLE_MAPS_API_KEY`: enable **Places API (New)** and **Routes API**, restrict the key to those APIs and your server's IPs                                                                       |
+| Push notifications (FCM and APNs, through Expo) | `PUSH_PROVIDER=expo`; optional `EXPO_ACCESS_TOKEN`. In the app's `.env`: `EAS_PROJECT_ID`, and `GOOGLE_SERVICES_FILE` for Android. Upload the APNs key and FCM credentials with `eas credentials` |
+| Trip, community, post and chat photos           | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` (all three); `CLOUDINARY_FOLDER` keeps environments apart                                                                  |
 
 The app reads only public ids, in `apps/mobile/.env`: `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`,
 `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` and `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID`. The Google button shows

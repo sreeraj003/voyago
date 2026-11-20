@@ -9,10 +9,12 @@ import {
   respondToInvitation,
   withdrawRequest,
 } from '../../../src/api/participation';
+import { openTripChat } from '../../../src/api/chat';
 import { cancelTrip, deleteTrip, getTrip, tripAction } from '../../../src/api/trips';
 import { useFormError } from '../../../src/auth/use-form-error';
 import { Button, FormMessage, TextField } from '../../../src/components/Form';
 import { FormScreen } from '../../../src/components/FormScreen';
+import { OpenChatButton } from '../../../src/components/OpenChatButton';
 import { ReportForm } from '../../../src/components/ReportForm';
 import { StatusBadge } from '../../../src/components/StatusBadge';
 import { formatRupees } from '../../../src/trips/trip-form';
@@ -227,6 +229,9 @@ function Membership({ trip }: { trip: Trip }) {
           onPress={() => router.push(`/trips/${trip.id}/invite`)}
         />
       ) : null}
+      {actions.has('chat') ? (
+        <OpenChatButton title="Group chat" open={() => openTripChat(trip.id)} />
+      ) : null}
       {canSeePeople && trip.status !== 'DRAFT' ? (
         <Button
           title={`People on this trip (${trip.participantCount})`}
@@ -339,6 +344,7 @@ function TripActions({ trip }: { trip: Trip }) {
   actions.delete('join');
   actions.delete('leave');
   actions.delete('manage_people');
+  actions.delete('chat');
   if (actions.size === 0) return null;
   return (
     <View style={styles.actions}>

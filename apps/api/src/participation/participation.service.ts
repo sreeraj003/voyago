@@ -16,6 +16,7 @@ import {
 import { type z } from 'zod';
 import { type AuthUser } from '../common/auth/current-user.decorator.js';
 import { decodeCursor, toPage } from '../common/pagination/cursor.js';
+import { RealtimeService } from '../chat/realtime.service.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
@@ -52,6 +53,7 @@ export class ParticipationService {
     private readonly prisma: PrismaService,
     private readonly trips: TripsService,
     private readonly notifications: NotificationsService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   /** Ask to join; trips that don't need approval are joined at once. */
@@ -260,6 +262,7 @@ export class ParticipationService {
         data: { tripId },
       });
     });
+    await this.realtime.leaveTripChat(tripId, memberId);
   }
 
   async leave(user: AuthUser, tripId: string): Promise<void> {
@@ -278,6 +281,7 @@ export class ParticipationService {
       if (updated.count !== 1) throw new ConflictException('You are not on this trip');
       await syncCapacityStatus(tx, tripId);
     });
+    await this.realtime.leaveTripChat(tripId, user.id);
   }
 
   /** The organiser makes a participant a co-organiser, or back. */

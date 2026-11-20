@@ -18,3 +18,8 @@ apps/api/src/generated/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Firebase / Apple push credentials never go in git.
+google-services.json
+GoogleService-Info.plist
+*.p8

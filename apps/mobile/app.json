@@ -36,6 +36,12 @@
         {
           "locationWhenInUsePermission": "Voyago uses your location only when you tap Near me, to show trips meeting near you. It is not stored."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#1E8C8A"
+        }
       ]
     ],
     "experiments": {

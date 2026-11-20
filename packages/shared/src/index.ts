@@ -13,3 +13,4 @@ export * from './discovery.js';
 export * from './participation.js';
 export * from './social.js';
 export * from './communities.js';
+export * from './chat.js';

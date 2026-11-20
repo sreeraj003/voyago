@@ -3,6 +3,8 @@ import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { AuthModule } from './auth/auth.module.js';
+import { ChatModule } from './chat/chat.module.js';
+import { RealtimeModule } from './chat/realtime.service.js';
 import { AuthGuard } from './common/auth/auth.guard.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { ZodValidationPipe } from './common/pipes/zod-validation.pipe.js';
@@ -91,6 +93,8 @@ export class AppModule {
         SocialModule,
         PostsModule,
         CommunitiesModule,
+        RealtimeModule,
+        ChatModule,
         ...extraModules,
       ],
       providers: [

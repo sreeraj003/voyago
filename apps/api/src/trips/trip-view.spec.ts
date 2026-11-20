@@ -44,20 +44,23 @@ describe('allowedActions', () => {
       'delete',
       'cancel',
     ]);
-    expect(allowedActions(trip(), organiser)).toEqual(['edit', 'manage_people', 'cancel']);
+    expect(allowedActions(trip(), organiser)).toEqual(['edit', 'manage_people', 'cancel', 'chat']);
     expect(allowedActions(trip({ departureAt: new Date(Date.now() + HOUR) }), organiser)).toEqual([
       'edit',
       'start',
       'manage_people',
       'cancel',
+      'chat',
     ]);
     expect(allowedActions(trip({ status: 'IN_PROGRESS' }), organiser)).toEqual([
       'edit',
       'complete',
       'manage_people',
       'cancel',
+      'chat',
     ]);
-    expect(allowedActions(trip({ status: 'CANCELLED' }), organiser)).toEqual([]);
+    // The chat stays open after a trip ends, so people can say goodbye or share photos.
+    expect(allowedActions(trip({ status: 'CANCELLED' }), organiser)).toEqual(['chat']);
   });
 
   it('gives co-organisers people management only, and keeps private trips invite-only', () => {
@@ -65,6 +68,7 @@ describe('allowedActions', () => {
     expect(allowedActions(trip(), member, { ...none, isCoOrganiser: true })).toEqual([
       'manage_people',
       'leave',
+      'chat',
     ]);
     expect(allowedActions(trip({ visibility: 'PRIVATE' }), member)).toEqual([]);
   });
@@ -86,7 +90,14 @@ describe('allowedActions', () => {
     expect(allowedActions(trip(), member, { ...none, hasPendingRequest: true })).toEqual([]);
     expect(allowedActions(trip(), member, { ...none, participantStatus: 'ACTIVE' })).toEqual([
       'leave',
+      'chat',
     ]);
+    expect(
+      allowedActions(trip({ status: 'COMPLETED' }), member, {
+        ...none,
+        participantStatus: 'COMPLETED',
+      }),
+    ).toEqual(['chat']);
     expect(allowedActions(trip(), member, { ...none, participantStatus: 'LEFT' })).toEqual([
       'join',
     ]);

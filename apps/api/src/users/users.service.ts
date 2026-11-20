@@ -16,6 +16,7 @@ import {
   type UpdateMotorcycleSchema,
 } from '@voyago/shared';
 import { type z } from 'zod';
+import { directMessageAllowed } from '../chat/message-permission.js';
 import { PrismaService } from '../database/prisma.service.js';
 
 const motorcycleSelect = {
@@ -159,6 +160,7 @@ export class UsersService {
       verification: { email: user.emailVerifiedAt !== null, phone: user.phoneVerifiedAt !== null },
       memberSince: user.createdAt.toISOString(),
       follow,
+      canMessage: isSelf ? false : await directMessageAllowed(this.prisma, viewerId, user.id),
     };
     if (!full) {
       return {

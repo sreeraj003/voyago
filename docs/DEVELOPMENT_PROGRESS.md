@@ -13,7 +13,7 @@ verified before the next starts.
 | 06  | Discovery and geospatial search             | Done        |
 | 07  | Join requests and participant management    | Done        |
 | 08  | Communities and social graph                | Done        |
-| 09  | Chat and notifications                      | Not started |
+| 09  | Chat and notifications                      | Done        |
 | 10  | Admin dashboard and moderation              | Not started |
 | 11  | Live location and safety workflows          | Not started |
 | 12  | Commercial operators and packages           | Not started |
@@ -21,6 +21,85 @@ verified before the next starts.
 | 14  | Subscriptions and monetisation              | Not started |
 | 15  | Analytics, observability and operations     | Not started |
 | 16  | Security, testing, launch readiness, deploy | Not started |
+
+---
+
+## Milestone 09: Chat and notifications (2026-11-20)
+
+### Implemented
+
+- **Chats** (`apps/api/src/chat`): direct messages, trip group chats and community chats, kept in
+  PostgreSQL. Group membership follows the trip (active and finished participants) or community
+  (active members), so leaving or removal ends access immediately and live sockets are evicted.
+  Non-members get 404. Direct messages follow the recipient's "who can message me" setting and
+  blocks; profiles show `canMessage`.
+- **Messages:** text (up to 2,000 characters), private photos (Cloudinary authenticated uploads
+  with server-signed links, kind `chat-photo`), announcements by organisers, co-organisers and
+  community moderators, deletion of your own messages, history by cursor, read positions and
+  unread counts, mute. Sending is idempotent per `clientId` and rate limited per member (Redis).
+- **Realtime** (Socket.IO at `/api/v1/realtime`, Redis adapter for several API instances): every
+  connection needs an access token; the socket closes when the token expires and the session is
+  rechecked on each join and send. Events: join, leave, send, read, typing start and stop;
+  server events for new and deleted messages, read receipts, typing and online/offline. Blocked
+  people are left out of each other's live events in groups.
+- **Notifications:** new-message notifications (one per chat until read; announcements only in
+  communities; muted chats and blocked people skipped), alongside the existing join request,
+  approval, rejection, trip update and cancellation notifications.
+- **Push** (`apps/api/src/notifications/push`): `PUSH_PROVIDER=expo` sends every notification
+  through Expo's push service (FCM on Android, APNs on iOS) from a transactional outbox, at most
+  once, after commit; dead device tokens are removed. `none` keeps everything in-app; `dev` logs
+  pushes for development and tests. `GET /features` reports `push`.
+- **Mobile:** Inbox has Chats and Updates, with an unread badge on the tab. New chat screen:
+  live messages, pending and failed states with retry (resent with the same id), typing
+  indicator, "Seen" / "Seen by N", online status, older messages on scroll, photo messages (when
+  photo storage is set up), announcements, mute and delete. "Group chat" on trips, "Community
+  chat" for members and "Message" on profiles. Push: registers the device when the server can
+  push and notifications are allowed ("Turn on notifications" in the Inbox), opens the right
+  screen when a notification is tapped, and unregisters on sign-out. `app.config.ts` reads
+  `EAS_PROJECT_ID` and `GOOGLE_SERVICES_FILE` from env.
+
+### Database changes
+
+Migration `20261121090000_chat_notifications`; see `docs/DATABASE.md`.
+
+### APIs
+
+`/me/conversations`, `/me/conversations/unread-count`, `/conversations/direct`,
+`/trips/:id/chat`, `/communities/:slug/chat`, `/conversations/:id` (and `/messages`, `/read`,
+`/mute`), `/messages/:id/delete`, `/me/push-tokens` (and `/remove`), plus the Socket.IO events;
+see `docs/API.md`, "Chat".
+
+### Tests
+
+- 16 new end-to-end tests over REST and real sockets (166 in total): socket authentication and
+  sign-out cut-off; direct message settings (everyone, followers, trip participants); live
+  delivery once per `clientId` across devices; typing throttling; read receipts and unread
+  counts; one notification per chat and the push it sends; muting; history paging; message
+  validation (length, empty, foreign or unconfigured photos, announcements in direct chats);
+  deleting; blocks in direct and group chats; non-members kept out of history, sending, joining
+  and typing; trip chat access, announcements and notifications; removal cutting off live
+  delivery; rate limiting; community chat access and leaving.
+- API unit tests for the Expo push sender, provider choice, private chat photo uploads and signed
+  links, and the trip `chat` action (71 in total). Mobile unit tests for the message cache and
+  notification routing (39 in total).
+- Browser check on Expo web with two members against the real API: trip group chat, typing
+  indicator, live delivery, "Seen by 1", an announcement, a reply, the unread count in the Inbox
+  and tab badge, and a direct message from a profile. No errors.
+
+### Outstanding
+
+- No real push was sent: that needs an Expo project (`EAS_PROJECT_ID`), FCM and APNs credentials
+  uploaded with `eas credentials`, a device build, and `PUSH_PROVIDER=expo`. The Expo request was
+  tested against the documented API with a recording fetch.
+- Expo push receipts (the second delivery report) are not polled yet; only the first response is
+  used to drop dead tokens.
+- Chat photos need the Cloudinary keys; without them the photo button is shown disabled with a
+  note.
+- Reporting a message and the moderators' access process for reported chats come with
+  milestone 10. Booking notifications come with milestone 13.
+- Community invitations (as opposed to join requests) are not built; the `COMMUNITY_INVITE`
+  notification type is unused so far.
+- Members have no avatars yet, so chats show names only.
 
 ---
 

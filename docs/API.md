@@ -183,9 +183,11 @@ actions `join`, `leave` and `manage_people`.
 | Method | Path                             | Auth   | Success | Description                              |
 | ------ | -------------------------------- | ------ | ------- | ---------------------------------------- |
 | GET    | `/me/notifications`              | Bearer | 200     | Newest first; `unreadOnly=true`, cursor. |
-| GET    | `/me/notifications/unread-count` | Bearer | 200     | `{ count }`.                             |
+| GET    | `/me/notifications/unread-count` | Bearer | 200     | `{ count }`, chat messages left out.     |
 | POST   | `/me/notifications/:id/read`     | Bearer | 204     | Mark one read (404 for someone else's).  |
 | POST   | `/me/notifications/read-all`     | Bearer | 200     | `{ updated }`.                           |
+| POST   | `/me/push-tokens`                | Bearer | 204     | Register an Expo push token + platform.  |
+| POST   | `/me/push-tokens/remove`         | Bearer | 204     | Stop pushes to a device (on sign-out).   |
 
 In-app notifications are created in the same transaction as the change they describe: new join
 request (or someone joined an open trip), request approved or declined, removed from a trip,
@@ -193,7 +195,83 @@ trip updated (departure, return, places, stops or title; description edits are n
 trip cancelled (participants, pending requesters and invitees), a reminder within 24 hours of
 departure (sent once per trip), trip invitations, new followers, and community updates (requests
 for moderators, approvals, removals, announcements). `data` carries ids, a community slug or a
-username only. Push and email delivery come with milestone 09.
+username or a chat id only.
+
+Chat messages create one unread `NEW_MESSAGE` notification per member and chat (later messages
+update it) for members who don't have the chat open: every message in direct and trip chats,
+announcements only in community chats; muted chats and blocked people are skipped.
+
+**Push:** every notification is also pushed to the member's registered devices when
+`PUSH_PROVIDER=expo` (Expo's push service, which delivers through FCM and APNs) and the member
+hasn't turned pushes off (`pushEnabled`). Pushes leave from an outbox (`push_pending_at`) after
+the transaction commits, at most once, and are dropped if they can't go out within 15 minutes.
+Devices Expo reports as unregistered are forgotten. With `PUSH_PROVIDER=none` everything stays
+in-app.
+
+### Chat
+
+| Method | Path                             | Auth   | Success | Description                                            |
+| ------ | -------------------------------- | ------ | ------- | ------------------------------------------------------ |
+| GET    | `/me/conversations`              | Bearer | 200     | My chats with messages, latest first (cursor).         |
+| GET    | `/me/conversations/unread-count` | Bearer | 200     | Unread messages in my 50 latest chats, muted excluded. |
+| POST   | `/conversations/direct`          | Bearer | 200     | `{ username }`: existing chat, or start one (403).     |
+| POST   | `/trips/:id/chat`                | Bearer | 200     | The trip's group chat (people on the trip).            |
+| POST   | `/communities/:slug/chat`        | Bearer | 200     | The community chat (active members).                   |
+| GET    | `/conversations/:id`             | Bearer | 200     | Chat details, unread count, read positions.            |
+| GET    | `/conversations/:id/messages`    | Bearer | 200     | History, newest first (cursor, `limit` up to 100).     |
+| POST   | `/conversations/:id/messages`    | Bearer | 201     | Send (`clientId`, `body` and/or `imageId`).            |
+| POST   | `/conversations/:id/read`        | Bearer | 200     | `{ messageId }`: read up to there (never moves back).  |
+| POST   | `/conversations/:id/mute`        | Bearer | 200     | `{ muted }`.                                           |
+| POST   | `/messages/:id/delete`           | Bearer | 204     | Delete my own message for everyone.                    |
+
+- **Who belongs:** direct chats, their two members; trip chats, everyone on the trip (active, or
+  finished with it); community chats, active members. Membership follows the trip or community,
+  so leaving or being removed ends access at once (and live sockets are taken out of the room).
+  Anyone else gets 404, so chats can't be probed. Staff have no route to read chats: moderation
+  works from reports (milestone 10).
+- **Direct messages** follow the recipient's `allowMessagesFrom`: `EVERYONE`, `FOLLOWERS` (you
+  follow them), `TRIP_PARTICIPANTS` (default: you share a trip) or `NOBODY`. Once they have
+  written to you, you may reply unless they chose `NOBODY`. A block in either direction closes the
+  chat (`canSend: false`, sends 403). Profiles show `canMessage`.
+- **Messages:** text up to 2,000 characters, or a photo (`imageId` from an upload signature of
+  kind `chat-photo`, checked to be the sender's own upload) with an optional caption.
+  Organisers, co-organisers and community moderators can send `announcement: true` (text only;
+  notifies everyone, even muted). `clientId` (a UUID per message) makes sending idempotent:
+  resending returns the stored message instead of a copy. 30 messages per member per minute
+  (`CHAT_RATE_LIMIT_PER_MINUTE`), 429 beyond.
+- **Photos are private:** uploaded as Cloudinary "authenticated" assets; `imageUrl` is a signed
+  link the server gives only to members.
+- **Blocks in groups:** messages from people you blocked (or who blocked you) are left out of
+  history, live delivery, typing and read positions.
+
+#### Realtime (Socket.IO)
+
+Connect to the API origin with path `/api/v1/realtime` and `auth: { token: <access token> }`.
+Without a valid token the connection fails with `unauthorized`. The socket is closed when the
+token expires (reconnect with a fresh one), and the session is checked again on every join and
+send, so signing out or suspension cuts it off. Every request is acknowledged with
+`{ ok: true, data }` or `{ ok: false, error: { status, message } }`, using the same status codes
+as REST. Redis carries events between API instances.
+
+| Client sends         | Payload                                                        | Answer                    |
+| -------------------- | -------------------------------------------------------------- | ------------------------- |
+| `conversation:join`  | `{ conversationId }`                                           | `{ onlineUserIds }` (404) |
+| `conversation:leave` | `{ conversationId }`                                           | -                         |
+| `message:send`       | `{ conversationId, clientId, body?, imageId?, announcement? }` | the stored message        |
+| `message:read`       | `{ conversationId, messageId }`                                | `{ userId, lastReadAt }`  |
+| `typing:start`       | `{ conversationId }` (joined chats only, 1 per 1.5 s)          | -                         |
+| `typing:stop`        | `{ conversationId }`                                           | -                         |
+
+| Server sends      | Payload                                           | To                                                                    |
+| ----------------- | ------------------------------------------------- | --------------------------------------------------------------------- |
+| `message:new`     | a message                                         | the chat's room, plus every direct and trip chat member's own devices |
+| `message:deleted` | `{ conversationId, messageId }`                   | the chat's room                                                       |
+| `message:read`    | `{ conversationId, userId, lastReadAt }`          | the chat's room                                                       |
+| `typing:update`   | `{ conversationId, userId, displayName, typing }` | the chat's room, except the typist                                    |
+| `user:online`     | `{ conversationId, userId }`                      | the chat's room                                                       |
+| `user:offline`    | `{ conversationId, userId }`                      | the chat's room                                                       |
+
+Presence is "has the chat open right now": it comes from live sockets, so nothing is stored.
 
 ### Communities
 
