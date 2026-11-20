@@ -99,6 +99,7 @@ describe('trip form parsing', () => {
       estimatedDurationMinutes: 90,
       difficulty: 'CHALLENGING',
       minEngineCc: null,
+      bikeCategories: [],
     } as unknown as Parameters<typeof fromTrip>[0]);
     expect(form).toMatchObject({
       originCoords: '12.97, 77.57',

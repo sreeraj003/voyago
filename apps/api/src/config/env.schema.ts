@@ -82,6 +82,12 @@ export const EnvSchema = z
       .string()
       .regex(/^[a-z0-9_-]{1,40}$/)
       .default('voyago-dev'),
+
+    // ── Discovery (milestone 06) ───────────────────────────────────────────────
+    /** Radius used when a nearby or point search does not send one. */
+    DISCOVERY_DEFAULT_RADIUS_KM: z.coerce.number().int().min(1).max(500).default(25),
+    /** Largest radius a member may ask for. */
+    DISCOVERY_MAX_RADIUS_KM: z.coerce.number().int().min(1).max(500).default(200),
   })
   .superRefine((env, ctx) => {
     const cloudinary = [
@@ -94,6 +100,13 @@ export const EnvSchema = z
         code: 'custom',
         path: ['CLOUDINARY_API_SECRET'],
         message: 'Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET together',
+      });
+    }
+    if (env.DISCOVERY_DEFAULT_RADIUS_KM > env.DISCOVERY_MAX_RADIUS_KM) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['DISCOVERY_DEFAULT_RADIUS_KM'],
+        message: 'must not exceed DISCOVERY_MAX_RADIUS_KM',
       });
     }
     if (env.NODE_ENV !== 'production') return;

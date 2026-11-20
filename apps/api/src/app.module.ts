@@ -13,6 +13,7 @@ import { PrismaModule } from './database/prisma.module.js';
 import { HealthModule } from './health/health.module.js';
 import { IntegrationsModule } from './integrations/integrations.module.js';
 import { RedisModule } from './redis/redis.module.js';
+import { DiscoveryModule } from './discovery/discovery.module.js';
 import { TripsModule } from './trips/trips.module.js';
 import { UsersModule } from './users/users.module.js';
 
@@ -79,6 +80,7 @@ export class AppModule {
         AuthModule,
         UsersModule,
         TripsModule,
+        DiscoveryModule,
         ...extraModules,
       ],
       providers: [

@@ -94,6 +94,7 @@ export class TripsService {
           estimatedDurationMinutes: input.estimatedDurationMinutes ?? null,
           difficulty: input.difficulty ?? null,
           minEngineCc: input.minEngineCc ?? null,
+          bikeCategories: input.bikeCategories ?? [],
           visibility: input.visibility ?? 'PUBLIC',
           approvalRequired: input.approvalRequired ?? true,
           coverImageKey: input.coverImageId ?? null,
@@ -167,6 +168,7 @@ export class TripsService {
         minParticipants: input.minParticipants ?? trip.minParticipants,
         maxParticipants: input.maxParticipants ?? trip.maxParticipants,
         minEngineCc: input.minEngineCc !== undefined ? input.minEngineCc : trip.minEngineCc,
+        bikeCategories: input.bikeCategories ?? trip.bikeCategories,
         stops: input.stops,
       }),
     );

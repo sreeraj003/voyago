@@ -47,6 +47,7 @@ export const MotorcycleCategorySchema = z.enum([
   'SCOOTER',
   'OTHER',
 ]);
+export type MotorcycleCategory = z.infer<typeof MotorcycleCategorySchema>;
 export const VehicleVerificationStatusSchema = z.enum([
   'UNVERIFIED',
   'PENDING',

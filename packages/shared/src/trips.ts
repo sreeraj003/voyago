@@ -3,7 +3,7 @@ import { GeoPointSchema } from './geo.js';
 import { CoverImageIdSchema } from './maps-media.js';
 import { CursorPageQuerySchema } from './pagination.js';
 import { TripModeSchema } from './trip-mode.js';
-import { ActivityTypeSchema } from './users.js';
+import { ActivityTypeSchema, MotorcycleCategorySchema } from './users.js';
 
 /**
  * Trip contracts for both modes. Rides are always MOTORCYCLE_RIDE; travel trips use any other
@@ -87,12 +87,18 @@ const tripFields = {
   /** Per-person cost-sharing estimate in paise. Not a price: nothing is charged. */
   estimatedBudgetPaise: z.number().int().min(0).max(100_000_000).nullable().optional(),
   currency: z.literal('INR').optional(),
-  /** Organiser's estimates. Voyago does not compute routes yet. */
+  /** Organiser's own estimates; the road route from Google is reported separately. */
   estimatedDistanceKm: z.number().int().min(1).max(20_000).nullable().optional(),
   estimatedDurationMinutes: z.number().int().min(1).max(86_400).nullable().optional(),
   difficulty: TripDifficultySchema.nullable().optional(),
   /** Rides only. */
   minEngineCc: z.number().int().min(50).max(3000).nullable().optional(),
+  /** Rides only: bike types the ride suits. Empty means any bike. */
+  bikeCategories: z
+    .array(MotorcycleCategorySchema)
+    .max(8)
+    .refine((list) => new Set(list).size === list.length, 'List each bike type once')
+    .optional(),
   visibility: TripVisibilityInputSchema.optional(),
   approvalRequired: z.boolean().optional(),
   /** From an upload signature (`/uploads/cover-signature`). null removes the cover. */
@@ -108,6 +114,7 @@ export interface TripRuleInput {
   minParticipants?: number;
   maxParticipants: number;
   minEngineCc?: number | null;
+  bikeCategories?: readonly string[];
   stops?: { plannedArrivalAt?: string | Date | null }[];
 }
 
@@ -130,6 +137,9 @@ export function tripRuleIssues(trip: TripRuleInput): RuleIssue[] {
   }
   if (!isRide && trip.minEngineCc != null) {
     issues.push({ path: 'minEngineCc', message: 'Engine size applies to rides only' });
+  }
+  if (!isRide && (trip.bikeCategories?.length ?? 0) > 0) {
+    issues.push({ path: 'bikeCategories', message: 'Bike types apply to rides only' });
   }
   if ((trip.minParticipants ?? 1) > trip.maxParticipants) {
     issues.push({ path: 'minParticipants', message: 'Minimum cannot exceed maximum participants' });
@@ -253,6 +263,7 @@ export const TripSchema = z.object({
     .nullable(),
   difficulty: TripDifficultySchema.nullable(),
   minEngineCc: z.number().int().nullable(),
+  bikeCategories: z.array(MotorcycleCategorySchema),
   approvalRequired: z.boolean(),
   organiser: z.object({ id: z.uuid(), username: z.string(), displayName: z.string() }),
   publishedAt: z.string().nullable(),

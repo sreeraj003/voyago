@@ -10,7 +10,7 @@ verified before the next starts.
 | 03  | Backend foundation and API conventions      | Done        |
 | 04  | Authentication and user profiles            | Done        |
 | 05  | Trip creation and lifecycle                 | Done        |
-| 06  | Discovery and geospatial search             | Not started |
+| 06  | Discovery and geospatial search             | Done        |
 | 07  | Join requests and participant management    | Not started |
 | 08  | Communities and social graph                | Not started |
 | 09  | Chat and notifications                      | Not started |
@@ -21,6 +21,52 @@ verified before the next starts.
 | 14  | Subscriptions and monetisation              | Not started |
 | 15  | Analytics, observability and operations     | Not started |
 | 16  | Security, testing, launch readiness, deploy | Not started |
+
+---
+
+## Milestone 06: Discovery and geospatial search (2026-11-20)
+
+### Implemented
+
+- **API** (`apps/api/src/discovery`): `GET /discovery/search`, `/nearby`, `/trending`,
+  `/destinations`. Filters for text, mode, activity, meeting point and destination names, dates,
+  budget, open places, status, difficulty, bike type and engine size, and distance from a point.
+- **PostGIS** for distance (`ST_DWithin`, `ST_Distance` on geography), Postgres full-text search
+  for text, partial indexes that cover only discoverable trips.
+- **Transparent ranking:** weighted text match, proximity, soonness, open places and saved
+  preferences; every result lists why it is there. Trending is joins in the last 7 days.
+- **Privacy:** only public, published trips; blocks both ways; meeting points rounded to about
+  1 km; distances are whole km and labelled straight-line; the searcher's location is not stored
+  or logged; the app asks for location only on "Near me" and rounds it to about 100 m.
+- **Configurable radius:** `DISCOVERY_DEFAULT_RADIUS_KM` (25) and `DISCOVERY_MAX_RADIUS_KM` (200).
+- **Bike types on rides:** organisers can say which bikes a ride suits (empty = any); searchers
+  filter by their bike type and engine size.
+- **Mobile Explore:** search bar, Ride/Travel switch, "Near me", filter sheet (sort, dates,
+  activity, difficulty, bike, budget, places, distance, full trips), list/map toggle, trip cards
+  with reasons, popular destinations, trending, loading skeletons, empty state and "Clear
+  filters". Native maps use `react-native-maps` with 1 km circles, not pins; the web build lists
+  meeting areas with Google Maps links. No search history is kept (not useful enough to justify
+  storing what people search for).
+
+### Database changes
+
+Migration `20261120110000_discovery`; see `docs/DATABASE.md` (including the query plan review).
+
+### Tests
+
+- 25 new end-to-end tests: coordinate and radius validation, radius limits, no-location
+  behaviour, private/draft/cancelled/blocked exclusion, approximate points, every filter, sorting,
+  ranking, pagination and cursor limits, trending and destinations.
+- Unit tests for tsquery building, LIKE escaping, cursors, reasons and the bike-type rule; mobile
+  tests for filter-to-query mapping, location rounding and date windows.
+
+### Outstanding
+
+- Android release builds need a Google Maps SDK key for `react-native-maps` (a separate,
+  app-restricted key); Expo Go works without one. iOS uses Apple Maps.
+- Destination grouping is by name; places spelled differently stay separate until destinations
+  are linked to Google place ids.
+- Discovery of community-only and followers-only trips arrives with milestone 08.
 
 ---
 

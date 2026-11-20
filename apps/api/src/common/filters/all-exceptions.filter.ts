@@ -56,7 +56,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
       ...(mapped.details ? { details: mapped.details } : {}),
       requestId: readRequestId(request),
       timestamp: new Date().toISOString(),
-      path: request.originalUrl ?? request.url,
+      // Path only: query strings can carry search text or coordinates.
+      path: (request.originalUrl ?? request.url).split('?')[0] ?? '',
     };
   }
 }

@@ -121,6 +121,54 @@ Trips return `coverImageUrl`, a resized Cloudinary delivery URL.
 and `organiserId` in a request are ignored. `COMMERCIAL_PAID` departures cannot be edited or
 cancelled here (409); they are managed from their package (milestone 12).
 
+### Discovery
+
+All four routes return only public community trips that are published (or full, when asked) and
+have not departed, run by active members, excluding anyone the caller has blocked or been blocked
+by. Results are trip cards (`TripCardSchema` in `@voyago/shared`).
+
+| Method | Path                      | Auth   | Success | Description                                                              |
+| ------ | ------------------------- | ------ | ------- | ------------------------------------------------------------------------ |
+| GET    | `/discovery/search`       | Bearer | 200     | Text and filters; `sort=relevance\|departure\|proximity`. Paged.         |
+| GET    | `/discovery/nearby`       | Bearer | 200     | `lat`, `lng` required, optional `radiusKm` and `mode`. Closest first.    |
+| GET    | `/discovery/trending`     | Bearer | 200     | Next 60 days, most joins in the last 7 days first. Optional point.       |
+| GET    | `/discovery/destinations` | Bearer | 200     | Destinations of upcoming trips, most trips first; `q` matches the start. |
+
+**Search parameters:** `q` (title, places and description; prefix matching), `mode`,
+`activityType` (comma-separated), `from` / `to` (part of the meeting point or destination name),
+`departFrom` / `departTo` (ISO date-times), `budgetMinPaise` / `budgetMaxPaise` (trips without an
+estimate are excluded when set), `minSeats` (open places), `status` (`PUBLISHED` by default; add
+`FULL`), `difficulty` (comma-separated), `bikeCategory` (rides that suit that bike or any bike),
+`engineCc` (rides whose minimum engine size that bike meets), `lat` / `lng` / `radiusKm`, `sort`,
+`limit` (1–50, default 20) and `cursor`.
+
+**Location and privacy:** coordinates must be valid (latitude −90..90, longitude −180..180) and
+sent together. `radiusKm` defaults to `DISCOVERY_DEFAULT_RADIUS_KM` (25) and may not exceed
+`DISCOVERY_MAX_RADIUS_KM` (200); 500 is the hard limit. A searcher's coordinates are used for that
+query only: they are not stored, and request logs record the path without the query string. The
+app asks for location permission only when the member taps "Near me", and rounds it to about
+100 m first. Without a point, `nearby` returns 400 and `search` works with `straightLineKm: null`.
+Meeting points in results are always rounded to about 1 km (`origin.approximate: true`), and
+`straightLineKm` is a whole number of at least 1. It is a straight-line distance, never presented
+as road distance; the road distance is `route` (Google), when available.
+
+**Ranking (`sort=relevance`)** is a weighted sum of signals, each scaled 0..1 (`RANKING_WEIGHTS`
+in `apps/api/src/discovery/discovery.service.ts`):
+
+| Signal      | Weight | Meaning                                                                            |
+| ----------- | -----: | ---------------------------------------------------------------------------------- |
+| Text match  |      3 | Postgres `ts_rank_cd` of title/destination (A), meeting point (B), description (C) |
+| Proximity   |      2 | 1 at the searched point, 0 at the edge of the radius                               |
+| Soonness    |      1 | 1 departing now, 0 at 60 days or more                                              |
+| Open places |      1 | Share of places still open                                                         |
+| Preferences |      1 | Activity or mode matches the member's saved preferences                            |
+
+Ties go to the earlier departure. Nothing about the people on a trip is used. Each card carries
+`matchReasons` in plain words (for example "About 4 km away (straight line)", "3 places left").
+
+**Paging:** ranked results shift as time passes, so discovery pages by position with an opaque
+`cursor`, up to 500 results deep; narrow the search to see more.
+
 ### Maps and media
 
 Optional integrations. Each is off until its server credentials are set, and then returns 503

@@ -2,6 +2,7 @@ import { type CreateTripInput } from '@voyago/shared';
 import { useState } from 'react';
 import { Image, StyleSheet, Text, View } from 'react-native';
 import { useFeatures } from '../api/use-features';
+import { BIKE_CATEGORY_OPTIONS } from '../trips/labels';
 import { type TripForm, toTripInput, formatRupees } from '../trips/trip-form';
 import { radius, spacing, typography } from '../theme/tokens';
 import { useTheme } from '../theme/use-theme';
@@ -9,6 +10,7 @@ import { Choice } from './Choice';
 import { CoverField } from './CoverField';
 import { DateTimeField } from './DateTimeField';
 import { Button, FormMessage, TextField } from './Form';
+import { MultiChoice } from './MultiChoice';
 import { PlaceField } from './PlaceField';
 
 const STEPS = ['Details', 'Route and dates', 'Group', 'Preview'] as const;
@@ -104,6 +106,7 @@ export function TripFormWizard({
                 mode,
                 activityType: mode === 'RIDE' ? 'MOTORCYCLE_RIDE' : 'WEEKEND_GETAWAY',
                 minEngineCc: mode === 'RIDE' ? form.minEngineCc : '',
+                bikeCategories: mode === 'RIDE' ? form.bikeCategories : [],
               })
             }
           />
@@ -288,6 +291,15 @@ export function TripFormWizard({
               onChangeText={set('minEngineCc')}
               keyboardType="number-pad"
               error={fieldError('minEngineCc')}
+            />
+          ) : null}
+          {form.mode === 'RIDE' ? (
+            <MultiChoice
+              label="Suits these bikes (optional)"
+              hint="Leave empty if any bike is welcome."
+              options={BIKE_CATEGORY_OPTIONS}
+              value={form.bikeCategories}
+              onChange={set('bikeCategories')}
             />
           ) : null}
           <TextField

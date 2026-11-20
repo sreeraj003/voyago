@@ -254,6 +254,35 @@ fixed id beginning `5eed0000`, so re-running changes nothing. The `dev_*` accoun
 - Route data (`trips.origin/destination`, `trip_stops`) is planning data only. Live location is a
   separate store (Redis, milestone 11) and never written to these tables.
 
+## Milestone 06 changes (`20261120110000_discovery`)
+
+- Extension `pg_trgm`.
+- `trips.bike_categories` (`MotorcycleCategory[]`, empty = any bike), rides only
+  (`trips_bike_categories_rides_only`).
+- `trips.search_vector`: a generated `tsvector` ('simple' configuration, so Indian place names
+  are not stemmed) over title and destination (weight A), meeting point (B) and description (C),
+  with GIN index `trips_search_idx`. Prisma declares it as `Unsupported("tsvector")` with
+  `@default(dbgenerated())` so the drift check stays empty; it is never written by the app.
+- Partial indexes covering only discoverable trips (`visibility = 'PUBLIC' AND status IN
+('PUBLISHED','FULL') AND deleted_at IS NULL`): `trips_discoverable_departure_idx` on
+  `(departure_at, id)` and `trips_discoverable_origin_idx` (GiST on `origin`).
+- Trigram indexes on `lower(origin_name)` and `lower(destination_name)` for the "from" / "to"
+  filters, and `trip_participants_trip_id_joined_at_idx` (active rows) for trending.
+- Partial and expression indexes are invisible to Prisma's drift check, which is why they live
+  only in the migration.
+
+### Query plans (reviewed 2026-11-20)
+
+Checked with `EXPLAIN` on 50,000 generated trips spread across India (rolled back afterwards):
+
+- Nearby (25 km, by distance): bitmap scan of `trips_discoverable_origin_idx`, then distance sort
+  of the few matches.
+- Text search: bitmap scan of `trips_search_idx`.
+- Soonest first with no filters: index-only scan of `trips_discoverable_departure_idx`, no sort.
+- Name filters (`to=okarn`): the planner chose a sequential scan because the sample had only five
+  destination names, so every name matched many rows; the trigram index is used once names are
+  varied. Recheck this when real data exists.
+
 ## Milestone 05 follow-up (`20261120093000_trip_route_and_cover`)
 
 - `trips`: added `route_distance_meters`, `route_duration_seconds`, `route_travel_mode`

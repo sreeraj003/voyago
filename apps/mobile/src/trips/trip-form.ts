@@ -37,6 +37,8 @@ export type TripForm = {
   durationHours: string;
   difficulty: '' | 'EASY' | 'MODERATE' | 'CHALLENGING';
   minEngineCc: string;
+  /** Rides only; empty means any bike. */
+  bikeCategories: string[];
   /** Uploaded cover id. `undefined` leaves the cover unchanged, `null` removes it. */
   coverImageId?: string | null;
   /** Local or delivered URL used only for the preview. */
@@ -64,6 +66,7 @@ export const emptyTripForm = (mode: 'RIDE' | 'TRAVEL' = 'RIDE'): TripForm => ({
   durationHours: '',
   difficulty: '',
   minEngineCc: '',
+  bikeCategories: [],
   coverPreview: null,
 });
 
@@ -171,6 +174,9 @@ export function toTripInput(form: TripForm): FormResult {
     estimatedDurationMinutes: hours === null ? null : Math.round(hours * 60),
     difficulty: form.difficulty || null,
     minEngineCc: form.mode === 'RIDE' ? optionalInt(form.minEngineCc) : null,
+    bikeCategories: (form.mode === 'RIDE' ? form.bikeCategories : []) as NonNullable<
+      CreateTripInput['bikeCategories']
+    >,
     visibility: form.visibility,
     approvalRequired: form.approvalRequired,
     ...(form.coverImageId === undefined ? {} : { coverImageId: form.coverImageId }),
@@ -217,6 +223,7 @@ export function fromTrip(trip: Trip): TripForm {
         : String(Math.round((trip.estimatedDurationMinutes / 60) * 10) / 10),
     difficulty: trip.difficulty ?? '',
     minEngineCc: trip.minEngineCc === null ? '' : String(trip.minEngineCc),
+    bikeCategories: [...trip.bikeCategories],
     coverPreview: trip.coverImageUrl,
   };
 }

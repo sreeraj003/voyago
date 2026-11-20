@@ -1,6 +1,7 @@
 import {
   canTransition,
   type GeoPoint,
+  type MotorcycleCategory,
   TERMINAL_TRIP_STATUSES,
   type Trip,
   type TripAction,
@@ -32,6 +33,7 @@ export interface TripRecord {
   estimatedDurationMinutes: number | null;
   difficulty: Trip['difficulty'];
   minEngineCc: number | null;
+  bikeCategories: MotorcycleCategory[];
   approvalRequired: boolean;
   coverImageKey: string | null;
   routeDistanceMeters: number | null;
@@ -166,6 +168,7 @@ export function toTripView(
         : null,
     difficulty: trip.difficulty,
     minEngineCc: trip.minEngineCc,
+    bikeCategories: trip.bikeCategories,
     approvalRequired: trip.approvalRequired,
     organiser: trip.organiser,
     publishedAt: iso(trip.publishedAt),
