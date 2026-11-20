@@ -8,6 +8,7 @@
     "pnpm": ">=10.0.0"
   },
   "scripts": {
+    "postinstall": "pnpm --filter @voyago/shared build && pnpm --filter @voyago/api prisma:generate",
     "build": "turbo run build",
     "dev": "turbo run dev --parallel --filter=@voyago/api --filter=@voyago/admin",
     "typecheck": "turbo run typecheck",
