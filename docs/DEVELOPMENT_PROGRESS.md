@@ -24,6 +24,68 @@ verified before the next starts.
 
 ---
 
+## Milestone 03: Backend foundation and API conventions (2026-11-20)
+
+Milestone 01 already delivered the `/api/v1` prefix, env validation, structured logging with
+request ids, Helmet, CORS from env, a global rate limit, Swagger and Prisma/Redis clients. This
+milestone completed the rest of the spec.
+
+### Implemented
+
+- **Global validation:** `createZodDto` turns `@voyago/shared` Zod schemas into DTO classes; a global
+  `ZodValidationPipe` validates every DTO-typed body, query and path parameter, strips unknown fields,
+  and the same schema documents the DTO in Swagger. UUID path parameters are validated.
+- **Response conventions:** `{ data }` / `{ data, page }` envelopes, cursor pagination
+  (`CursorPageQuerySchema`, `decodeCursor`, `toPage`), all in shared code. Documented in `docs/API.md`.
+- **Error handling:** database errors map to safe statuses (409 duplicate or related-record
+  conflict, 404 not found, 422 data rule, generic 500 otherwise) with no SQL, table or constraint
+  names in responses; malformed JSON → 400; bodies over 100 KB → 413.
+- **Request ids** are assigned before body parsing, so every response, including body errors,
+  carries one.
+- **Health:** `/health/live` (process only) and `/health/ready` (PostgreSQL, PostGIS, Redis; 503 when
+  any is down). `/health` stays as an alias for the apps.
+- **Resilient startup:** the API starts even when PostgreSQL or Redis is down; readiness reports it,
+  Redis reconnects with capped backoff and fails fast while disconnected.
+- **Auth guard foundation:** global `AuthGuard`, secure by default. Every route returns 401 unless
+  marked `@Public()`. No sign-in behaviour is invented; milestone 04 plugs in token verification.
+- `TRUST_PROXY` setting so rate limits use the real client IP behind a load balancer.
+- Code reorganised by the spec's module names: `common`, `config`, `database`, `redis`, `health`.
+  Empty placeholder modules were deliberately not created.
+
+### Database changes
+
+None.
+
+### APIs
+
+| Method | Path                   | Description                                    |
+| ------ | ---------------------- | ---------------------------------------------- |
+| GET    | `/api/v1/health/live`  | Liveness (new)                                 |
+| GET    | `/api/v1/health/ready` | Readiness, 503 when a dependency is down (new) |
+| GET    | `/api/v1/health`       | Alias of readiness (unchanged contract)        |
+
+### Tests
+
+`test/api-foundation.e2e-spec.ts` boots the real app (with test-only routes) against PostgreSQL and
+Redis and checks: liveness and readiness, body/query/UUID validation with field details, unknown
+fields stripped, malformed JSON 400, oversized body 413, duplicate 409 and CHECK-rule 422 without
+leaking database names, 404 shape, 401 from the auth guard, cursor pagination across real rows,
+Swagger paths and DTO schemas, 429 after the rate limit (health exempt), and startup with both
+PostgreSQL and Redis unreachable (live 200, ready 503).
+
+| Command                                                          | Result                                                  |
+| ---------------------------------------------------------------- | ------------------------------------------------------- |
+| `pnpm format:check`, `pnpm typecheck`, `pnpm lint`, `pnpm build` | Passed                                                  |
+| `pnpm test`                                                      | Unit tests passed (API 29, admin 6, mobile 5, shared 5) |
+| `pnpm --filter @voyago/api test:e2e`                             | 46 passed (15 API foundation, 27 database, 4 smoke)     |
+
+### Outstanding
+
+- Authentication itself (milestone 04) replaces the guard's "always 401" branch.
+- Socket.IO gateway is still deferred to milestone 09 (chat).
+
+---
+
 ## Milestone 02: Database design and migrations (2026-11-20)
 
 ### Implemented

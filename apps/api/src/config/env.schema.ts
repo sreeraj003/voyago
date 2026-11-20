@@ -30,6 +30,11 @@ export const EnvSchema = z.object({
       (value) => /^rediss?:\/\//.test(value),
       'REDIS_URL must be a redis:// or rediss:// URL',
     ),
+  /** Set to true when running behind a load balancer so rate limits see the real client IP. */
+  TRUST_PROXY: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
   RATE_LIMIT_TTL_SECONDS: z.coerce.number().int().positive().default(60),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
 });

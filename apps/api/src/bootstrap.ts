@@ -1,17 +1,33 @@
-import { type INestApplication } from '@nestjs/common';
+import { type INestApplication, type Type } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { type NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
+import { requestIdMiddleware } from './common/request-id.js';
 import { type AppConfig } from './config/app-config.js';
 import { APP_VERSION } from './version.js';
 
 export const API_PREFIX = 'api/v1';
 
-/** Builds a fully configured app. Shared by main.ts and the e2e tests. */
-export async function createApp(config: AppConfig): Promise<INestApplication> {
-  const app = await NestFactory.create(AppModule.forRoot(config), { bufferLogs: true });
+/** Largest accepted JSON body. Uploads go straight to object storage, not through the API. */
+export const JSON_BODY_LIMIT = '100kb';
+
+/** Builds a fully configured app. Shared by main.ts and the integration tests. */
+export async function createApp(
+  config: AppConfig,
+  options: { extraModules?: Type[] } = {},
+): Promise<INestApplication> {
+  const app = await NestFactory.create<NestExpressApplication>(
+    AppModule.forRoot(config, options.extraModules),
+    { bufferLogs: true, bodyParser: false },
+  );
+  // Order matters: request ids first, so body-parsing errors are traceable too.
+  app.use(requestIdMiddleware);
+  app.useBodyParser('json', { limit: JSON_BODY_LIMIT });
+  app.useBodyParser('urlencoded', { limit: JSON_BODY_LIMIT, extended: false });
+  app.set('trust proxy', config.TRUST_PROXY);
 
   app.useLogger(app.get(Logger));
   app.setGlobalPrefix(API_PREFIX);

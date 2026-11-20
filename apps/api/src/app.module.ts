@@ -1,14 +1,16 @@
-import { type DynamicModule, Module } from '@nestjs/common';
-import { APP_FILTER, APP_GUARD } from '@nestjs/core';
+import { type DynamicModule, Module, type Type } from '@nestjs/common';
+import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
-import { randomUUID } from 'node:crypto';
 import { LoggerModule } from 'nestjs-pino';
+import { AuthGuard } from './common/auth/auth.guard.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
+import { ZodValidationPipe } from './common/pipes/zod-validation.pipe.js';
+import { resolveRequestId } from './common/request-id.js';
 import { type AppConfig } from './config/app-config.js';
 import { ConfigModule } from './config/config.module.js';
-import { PrismaModule } from './infra/prisma/prisma.module.js';
-import { RedisModule } from './infra/redis/redis.module.js';
-import { HealthModule } from './modules/health/health.module.js';
+import { PrismaModule } from './database/prisma.module.js';
+import { HealthModule } from './health/health.module.js';
+import { RedisModule } from './redis/redis.module.js';
 
 /** Fields that must never reach the logs. */
 const REDACTED_PATHS = [
@@ -32,7 +34,8 @@ const REDACTED_PATHS = [
  */
 @Module({})
 export class AppModule {
-  static forRoot(config: AppConfig): DynamicModule {
+  /** `extraModules` lets integration tests mount test-only controllers on the real app. */
+  static forRoot(config: AppConfig, extraModules: Type[] = []): DynamicModule {
     return {
       module: AppModule,
       imports: [
@@ -40,15 +43,7 @@ export class AppModule {
         LoggerModule.forRoot({
           pinoHttp: {
             level: config.LOG_LEVEL,
-            genReqId: (req, res) => {
-              const incoming = req.headers['x-request-id'];
-              const id =
-                typeof incoming === 'string' && /^[\w-]{1,64}$/.test(incoming)
-                  ? incoming
-                  : randomUUID();
-              res.setHeader('x-request-id', id);
-              return id;
-            },
+            genReqId: resolveRequestId,
             redact: { paths: REDACTED_PATHS, censor: '[redacted]' },
             // Log the path only: query strings can carry search terms or coordinates.
             serializers: {
@@ -71,9 +66,13 @@ export class AppModule {
         PrismaModule,
         RedisModule,
         HealthModule,
+        ...extraModules,
       ],
       providers: [
+        // Guards run in this order: rate limit first, then authentication.
         { provide: APP_GUARD, useClass: ThrottlerGuard },
+        { provide: APP_GUARD, useClass: AuthGuard },
+        { provide: APP_PIPE, useValue: new ZodValidationPipe() },
         { provide: APP_FILTER, useClass: AllExceptionsFilter },
       ],
     };

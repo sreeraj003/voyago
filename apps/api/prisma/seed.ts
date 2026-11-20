@@ -15,7 +15,7 @@ import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { type GeoPoint } from '@voyago/shared';
 import { PrismaClient } from '../src/generated/prisma/client.js';
-import { setPointSql } from '../src/infra/prisma/geo.js';
+import { setPointSql } from '../src/database/geo.js';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'postgres']);
 

@@ -2,7 +2,7 @@ import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { randomUUID } from 'node:crypto';
 import { type Prisma, PrismaClient } from '../src/generated/prisma/client.js';
-import { geographyPoint, setPointSql } from '../src/infra/prisma/geo.js';
+import { geographyPoint, setPointSql } from '../src/database/geo.js';
 
 /**
  * Verifies the schema's integrity rules against the real Postgres/PostGIS database.

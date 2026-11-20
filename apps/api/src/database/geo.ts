@@ -1,5 +1,5 @@
 import { type GeoPoint, GeoPointSchema } from '@voyago/shared';
-import { Prisma } from '../../generated/prisma/client.js';
+import { Prisma } from '../generated/prisma/client.js';
 
 /**
  * PostGIS helpers. Prisma cannot read or write geography columns, so these build

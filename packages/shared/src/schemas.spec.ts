@@ -22,3 +22,19 @@ describe('shared schemas', () => {
     expect(ApiErrorSchema.safeParse({ error: 'Bad Request', message: 'x' }).success).toBe(false);
   });
 });
+
+describe('pagination and ids', () => {
+  it('applies the default page limit and caps it', async () => {
+    const { CursorPageQuerySchema } = await import('./index.js');
+    expect(CursorPageQuerySchema.parse({})).toEqual({ limit: 20 });
+    expect(CursorPageQuerySchema.parse({ limit: '50' }).limit).toBe(50);
+    expect(CursorPageQuerySchema.safeParse({ limit: '500' }).success).toBe(false);
+    expect(CursorPageQuerySchema.safeParse({ cursor: 'abc$%' }).success).toBe(false);
+  });
+
+  it('accepts only valid UUIDs', async () => {
+    const { UuidSchema } = await import('./index.js');
+    expect(UuidSchema.safeParse('5eed0000-0000-4000-8000-000000000001').success).toBe(true);
+    expect(UuidSchema.safeParse('not-a-uuid').success).toBe(false);
+  });
+});

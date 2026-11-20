@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { type DependencyStatus, type HealthResponse } from '@voyago/shared';
-import { PrismaService } from '../../infra/prisma/prisma.service.js';
-import { RedisService } from '../../infra/redis/redis.service.js';
-import { APP_VERSION } from '../../version.js';
+import { type DependencyStatus, type HealthResponse, type LivenessResponse } from '@voyago/shared';
+import { PrismaService } from '../database/prisma.service.js';
+import { RedisService } from '../redis/redis.service.js';
+import { APP_VERSION } from '../version.js';
 
 const CHECK_TIMEOUT_MS = 2_000;
 
@@ -14,6 +14,15 @@ export class HealthService {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
   ) {}
+
+  live(): LivenessResponse {
+    return {
+      status: 'ok',
+      version: APP_VERSION,
+      uptimeSeconds: Math.round(process.uptime()),
+      timestamp: new Date().toISOString(),
+    };
+  }
 
   async check(): Promise<HealthResponse> {
     const [database, postgis, redis] = await Promise.all([

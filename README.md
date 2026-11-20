@@ -16,7 +16,8 @@ This repository is a TypeScript monorepo:
 | `docs`            | Architecture, decisions (ADRs) and development progress |
 | `project-specs`   | Product brief and milestone specifications (00 to 16)   |
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design and
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design, [docs/API.md](docs/API.md) for API
+conventions and
 [docs/DEVELOPMENT_PROGRESS.md](docs/DEVELOPMENT_PROGRESS.md) for status.
 
 ## Prerequisites
@@ -56,7 +57,7 @@ pnpm dev                                # API on :3000 and admin on :5173
 pnpm --filter @voyago/mobile start      # Expo dev server for the mobile app
 ```
 
-- Health check: <http://localhost:3000/api/v1/health>
+- Health: <http://localhost:3000/api/v1/health/live> (liveness), <http://localhost:3000/api/v1/health/ready> (readiness)
 - API docs (OpenAPI): <http://localhost:3000/api/docs>
 - Admin: <http://localhost:5173>
 
@@ -70,7 +71,7 @@ pnpm format:check   # Prettier
 pnpm typecheck      # tsc --noEmit, strict, all packages
 pnpm lint           # ESLint
 pnpm test           # unit tests (API, admin, mobile, shared)
-pnpm --filter @voyago/api test:e2e   # API smoke + database constraint tests (Docker services)
+pnpm --filter @voyago/api test:e2e   # API integration + database constraint tests (Docker services)
 pnpm check          # format + typecheck + lint + unit tests
 ```
 

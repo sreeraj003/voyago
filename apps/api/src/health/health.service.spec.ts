@@ -1,5 +1,5 @@
-import { type PrismaService } from '../../infra/prisma/prisma.service.js';
-import { type RedisService } from '../../infra/redis/redis.service.js';
+import { type PrismaService } from '../database/prisma.service.js';
+import { type RedisService } from '../redis/redis.service.js';
 import { HealthService } from './health.service.js';
 
 // Unit test of the status aggregation only. The real database and Redis

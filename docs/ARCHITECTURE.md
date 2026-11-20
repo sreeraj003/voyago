@@ -21,7 +21,7 @@ flowchart LR
             H["health"]
             F["auth · users · trips · discovery ·<br/>participation · social · messaging ·<br/>notifications · safety · commerce · admin<br/>(added milestone by milestone)"]
         end
-        I["Infrastructure: PrismaService · RedisService ·<br/>config · logging · error filter · rate limit"]
+        I["Foundation: database · redis · config ·<br/>common (validation, errors, auth guard, pagination)"]
         G --> Modules --> I
     end
 
