@@ -138,14 +138,13 @@ export function CommunityForm({
           every member.
         </FormMessage>
       )}
-      {features.coverUploads ? (
-        <CoverField
-          kind="community-cover"
-          previewUri={previewUri}
-          onUploaded={(id, preview) => setCover({ id, preview })}
-          onRemove={() => setCover({ id: null, preview: null })}
-        />
-      ) : null}
+      <CoverField
+        kind="community-cover"
+        enabled={features.coverUploads}
+        previewUri={previewUri}
+        onUploaded={(id, preview) => setCover({ id, preview })}
+        onRemove={() => setCover({ id: null, preview: null })}
+      />
       {message ? <FormMessage tone="error">{message}</FormMessage> : null}
       <Button title={submitTitle} loading={busy} onPress={submit} />
     </>

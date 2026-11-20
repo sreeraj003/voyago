@@ -12,10 +12,21 @@ type Props = {
   onUploaded: (imageId: string, previewUri: string) => void;
   onRemove: () => void;
   kind?: UploadKind;
+  /** False while the server has no photo storage keys: the field shows, but explains why it is off. */
+  enabled?: boolean;
 };
 
-/** Pick a cover photo and upload it to Cloudinary. Shown only when uploads are configured. */
-export function CoverField({ previewUri, onUploaded, onRemove, kind = 'trip-cover' }: Props) {
+export const PHOTOS_OFF_NOTE =
+  'Photo uploads switch on once photo storage (Cloudinary) is set up on the server.';
+
+/** Pick a cover photo and upload it to Cloudinary. Disabled, with a note, until uploads are set up. */
+export function CoverField({
+  previewUri,
+  onUploaded,
+  onRemove,
+  kind = 'trip-cover',
+  enabled = true,
+}: Props) {
   const { colors } = useTheme();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,8 +66,12 @@ export function CoverField({ previewUri, onUploaded, onRemove, kind = 'trip-cove
         title={previewUri ? 'Change cover photo' : 'Add a cover photo'}
         variant="secondary"
         loading={busy}
+        disabled={!enabled}
         onPress={() => void pick()}
       />
+      {enabled ? null : (
+        <Text style={[styles.caption, { color: colors.textMuted }]}>{PHOTOS_OFF_NOTE}</Text>
+      )}
       {previewUri ? <Button title="Remove cover photo" variant="link" onPress={onRemove} /> : null}
       {error ? <Text style={[styles.caption, { color: colors.danger }]}>{error}</Text> : null}
     </View>

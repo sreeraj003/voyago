@@ -68,6 +68,7 @@ export class OtpService {
     await this.sms.send(
       phone,
       `${code} is your Voyago code. It expires in 5 minutes. Never share it.`,
+      { code },
     );
     return { expiresIn: OTP_TTL_SECONDS };
   }

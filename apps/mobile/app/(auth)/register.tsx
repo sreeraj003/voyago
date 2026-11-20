@@ -4,6 +4,7 @@ import { register } from '../../src/api/auth';
 import { useFormError } from '../../src/auth/use-form-error';
 import { Button, FormMessage, TextField } from '../../src/components/Form';
 import { Screen } from '../../src/components/Screen';
+import { SocialSignIn } from '../../src/components/SocialSignIn';
 
 export default function RegisterScreen() {
   const [form, setForm] = useState({ displayName: '', username: '', email: '', password: '' });
@@ -68,6 +69,7 @@ export default function RegisterScreen() {
         loading={busy}
         disabled={Object.values(form).some((value) => value.length === 0)}
       />
+      <SocialSignIn />
       <Button
         title="I already have an account"
         variant="link"

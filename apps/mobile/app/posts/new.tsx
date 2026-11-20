@@ -9,6 +9,7 @@ import { useFeatures } from '../../src/api/use-features';
 import { useFormError } from '../../src/auth/use-form-error';
 import { Choice } from '../../src/components/Choice';
 import { Button, FormMessage, TextField } from '../../src/components/Form';
+import { PHOTOS_OFF_NOTE } from '../../src/components/CoverField';
 import { FormScreen } from '../../src/components/FormScreen';
 import { radius } from '../../src/theme/tokens';
 
@@ -79,11 +80,6 @@ export default function NewPostScreen() {
       {isRecap ? (
         <FormMessage tone="info">Recap of {params.tripTitle ?? 'your trip'}</FormMessage>
       ) : null}
-      {!isRecap && !features.coverUploads ? (
-        <FormMessage tone="info">
-          Photo uploads are not set up on this server yet, so photo posts aren’t available.
-        </FormMessage>
-      ) : null}
       <TextField
         label={isRecap ? 'How did it go?' : 'Caption (optional)'}
         value={body}
@@ -92,34 +88,34 @@ export default function NewPostScreen() {
         maxLength={2000}
         error={error.fields.body}
       />
-      {features.coverUploads ? (
-        <>
-          {photos.map((photo, index) => (
-            <Image
-              key={photo.id}
-              source={{ uri: photo.uri }}
-              style={styles.photo}
-              accessibilityLabel={`Photo ${index + 1}`}
-            />
-          ))}
-          {photos.length < 6 ? (
-            <Button
-              title={photos.length ? 'Add another photo' : 'Add a photo'}
-              variant="secondary"
-              loading={uploading}
-              onPress={() => void pick()}
-            />
-          ) : null}
-          <TextField
-            label="Place (optional)"
-            value={placeName}
-            onChangeText={setPlaceName}
-            maxLength={160}
-            hint="A place name like Kudremukh. Photo locations are never read from your phone."
-            error={error.fields.placeName}
+      <>
+        {photos.map((photo, index) => (
+          <Image
+            key={photo.id}
+            source={{ uri: photo.uri }}
+            style={styles.photo}
+            accessibilityLabel={`Photo ${index + 1}`}
           />
-        </>
-      ) : null}
+        ))}
+        {photos.length < 6 ? (
+          <Button
+            title={photos.length ? 'Add another photo' : 'Add a photo'}
+            variant="secondary"
+            loading={uploading}
+            disabled={!features.coverUploads}
+            onPress={() => void pick()}
+          />
+        ) : null}
+        {features.coverUploads ? null : <FormMessage tone="info">{PHOTOS_OFF_NOTE}</FormMessage>}
+        <TextField
+          label="Place (optional)"
+          value={placeName}
+          onChangeText={setPlaceName}
+          maxLength={160}
+          hint="A place name like Kudremukh. Photo locations are never read from your phone."
+          error={error.fields.placeName}
+        />
+      </>
       <Choice
         label="Who can see it"
         value={audience}

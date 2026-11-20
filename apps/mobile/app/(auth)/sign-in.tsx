@@ -4,6 +4,7 @@ import { signIn } from '../../src/api/auth';
 import { useFormError } from '../../src/auth/use-form-error';
 import { Button, FormMessage, TextField } from '../../src/components/Form';
 import { Screen } from '../../src/components/Screen';
+import { SocialSignIn } from '../../src/components/SocialSignIn';
 
 export default function SignInScreen() {
   const [email, setEmail] = useState('');
@@ -52,6 +53,7 @@ export default function SignInScreen() {
         loading={busy}
         disabled={!email || !password}
       />
+      <SocialSignIn />
       <Button
         title="Use phone number instead"
         variant="secondary"

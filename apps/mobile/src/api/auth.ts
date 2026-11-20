@@ -52,6 +52,18 @@ export async function verifyOtp(phone: string, code: string) {
   return result;
 }
 
+/** Exchanges a Google or Apple ID token; signs in, or returns a signup token for a new member. */
+export async function socialSignIn(provider: 'google' | 'apple', idToken: string) {
+  const result = await apiRequest(`/auth/social/${provider}`, {
+    method: 'POST',
+    body: { idToken },
+    auth: false,
+    schema: SignInResultSchema,
+  });
+  if (result.status === 'AUTHENTICATED') await storeTokens(result.tokens);
+  return result;
+}
+
 export async function completeSignup(input: {
   signupToken: string;
   username: string;

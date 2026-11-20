@@ -24,6 +24,25 @@ verified before the next starts.
 
 ---
 
+## Provider setup by env keys (2026-11-20)
+
+Between milestones 08 and 09: every external provider now works as soon as its keys are added.
+
+- **SMS codes:** real Twilio and MSG91 senders (`SMS_PROVIDER=twilio|msg91`).
+- **Email:** real Resend and Postmark senders (`EMAIL_PROVIDER=resend|postmark`), with `EMAIL_FROM`.
+- **Env validation:** the API refuses to start when a chosen provider lacks a key, naming it.
+- **Google and Apple sign-in in the app:** buttons on sign-in and register, shown only when the API
+  has the provider on (and, for Google, the platform has a client id). New accounts finish on a
+  "choose your username" screen.
+- **Photos:** cover and post photo options stay visible, disabled with a note, until Cloudinary keys
+  are set. Text posts work without them.
+- **Tests:** unit tests post to each provider through a recording fetch (no live calls) and check
+  the missing-key errors; a mobile test checks the social buttons stay hidden without keys.
+- **Not verified live:** no real provider accounts exist here, so no SMS, email or social sign-in
+  was sent end to end. Each follows the provider's documented API.
+
+---
+
 ## Milestone 08: Communities and social graph (2026-11-20)
 
 Also completes the milestone 07 follow-ups: co-organisers and invitations to private trips.

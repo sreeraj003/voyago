@@ -76,13 +76,11 @@ function Feed() {
       <Text accessibilityRole="header" style={[styles.heading, { color: colors.text }]}>
         Your feed
       </Text>
-      {features.coverUploads ? (
-        <Button
-          title="Share destination photos"
-          variant="link"
-          onPress={() => router.push('/posts/new')}
-        />
-      ) : null}
+      <Button
+        title={features.coverUploads ? 'Share destination photos' : 'Share a post'}
+        variant="link"
+        onPress={() => router.push('/posts/new')}
+      />
       {feed.isPending ? <FormMessage tone="info">Loading your feed…</FormMessage> : null}
       {feed.isError ? (
         <>

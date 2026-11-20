@@ -55,17 +55,30 @@ Locally, `SMS_PROVIDER=dev` and `EMAIL_PROVIDER=dev` print OTP codes and email l
 instead of sending them. They are refused when `NODE_ENV=production`. The seeded `dev_*` accounts
 (for example `dev_asha@example.com`) sign in with the password `voyago-dev-password`.
 
-### Optional: Google Maps and Cloudinary
+### Optional providers: add keys, restart, it works
 
-Everything works without these; the app then asks for coordinates and hides cover photos. Put the
-values in `apps/api/.env` (or the server's secret store), never in git or in the mobile app.
+Every provider is chosen by env keys alone. Without keys the feature stays visible in the app with
+a short "not set up yet" note (or the API answers 503), and nothing pretends to work. Put the values
+in `apps/api/.env` (or the server's secret store), never in git. The API refuses to start when a
+chosen provider is missing one of its keys, and says which one.
 
-- **Google Maps** (`GOOGLE_MAPS_API_KEY`): place search and road distance/time. In Google Cloud
-  enable **Places API (New)** and **Routes API**, create an API key, and restrict it to those two
-  APIs and to your server's IP addresses.
-- **Cloudinary** (`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, all
-  three together): trip cover photos. `CLOUDINARY_FOLDER` keeps environments apart (`voyago-dev`,
-  `voyago-prod`).
+| Feature                                | Keys in `apps/api/.env`                                                                                                          |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Phone sign-in codes (Twilio)           | `SMS_PROVIDER=twilio`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, and `TWILIO_FROM` or `TWILIO_MESSAGING_SERVICE_SID`            |
+| Phone sign-in codes (MSG91, India DLT) | `SMS_PROVIDER=msg91`, `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_ID` (an approved OTP flow), `MSG91_OTP_VARIABLE` (default `otp`)         |
+| Email (Resend)                         | `EMAIL_PROVIDER=resend`, `RESEND_API_KEY`, `EMAIL_FROM` (a verified sender)                                                      |
+| Email (Postmark)                       | `EMAIL_PROVIDER=postmark`, `POSTMARK_SERVER_TOKEN`, `EMAIL_FROM`                                                                 |
+| Google sign-in                         | `GOOGLE_CLIENT_IDS` (comma separated OAuth client ids), plus the same ids in the app (below)                                     |
+| Apple sign-in (iOS)                    | `APPLE_CLIENT_IDS` with the bundle id `com.voyago.app`                                                                           |
+| Place search, road distance and time   | `GOOGLE_MAPS_API_KEY`: enable **Places API (New)** and **Routes API**, restrict the key to those APIs and your server's IPs      |
+| Trip, community and post photos        | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` (all three); `CLOUDINARY_FOLDER` keeps environments apart |
+
+The app reads only public ids, in `apps/mobile/.env`: `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`,
+`EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID` and `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID`. The Google button shows
+when the API reports Google sign-in on and this platform has a client id. Apple sign-in needs an iOS
+development or store build (not Expo Go) with the Sign in with Apple capability.
+
+`GET /api/v1/auth/methods` and `GET /api/v1/features` report which providers are switched on.
 
 ## Running
 

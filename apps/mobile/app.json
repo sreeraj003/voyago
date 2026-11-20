@@ -8,7 +8,8 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.voyago.app"
+      "bundleIdentifier": "com.voyago.app",
+      "usesAppleSignIn": true
     },
     "android": {
       "package": "com.voyago.app"
@@ -20,10 +21,12 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      "expo-apple-authentication",
+      "expo-web-browser",
       [
         "expo-image-picker",
         {
-          "photosPermission": "Voyago uses your photos only when you choose a trip cover.",
+          "photosPermission": "Voyago uses your photos only when you choose a trip cover, community cover or post photo.",
           "cameraPermission": false,
           "microphonePermission": false
         }

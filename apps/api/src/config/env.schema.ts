@@ -53,11 +53,28 @@ export const EnvSchema = z
     OTP_HMAC_SECRET: z.string().min(32, 'OTP_HMAC_SECRET must be at least 32 characters'),
     /**
      * `none`: phone sign-in is disabled (503). `dev`: codes are logged and kept in memory for
-     * tests; refused in production. A real SMS provider adapter is added when credentials exist.
+     * tests; refused in production. `twilio` or `msg91`: real delivery with the keys below.
      */
-    SMS_PROVIDER: z.enum(['none', 'dev']).default('none'),
-    /** `none`: no email is sent (verification and reset return 503). `dev`: as for SMS. */
-    EMAIL_PROVIDER: z.enum(['none', 'dev']).default('none'),
+    SMS_PROVIDER: z.enum(['none', 'dev', 'twilio', 'msg91']).default('none'),
+    TWILIO_ACCOUNT_SID: z.string().default(''),
+    TWILIO_AUTH_TOKEN: z.string().default(''),
+    /** A Twilio number in E.164, or leave empty and set TWILIO_MESSAGING_SERVICE_SID. */
+    TWILIO_FROM: z.string().default(''),
+    TWILIO_MESSAGING_SERVICE_SID: z.string().default(''),
+    MSG91_AUTH_KEY: z.string().default(''),
+    /** DLT-approved OTP template (flow) id. */
+    MSG91_TEMPLATE_ID: z.string().default(''),
+    /** The variable in that template that holds the code. */
+    MSG91_OTP_VARIABLE: z.string().default('otp'),
+    /**
+     * `none`: no email is sent (verification and reset return 503). `dev`: as for SMS.
+     * `resend` or `postmark`: real delivery with the keys below.
+     */
+    EMAIL_PROVIDER: z.enum(['none', 'dev', 'resend', 'postmark']).default('none'),
+    /** Sender, e.g. `Voyago <no-reply@yourdomain.in>`; the domain must be verified with the provider. */
+    EMAIL_FROM: z.string().default(''),
+    RESEND_API_KEY: z.string().default(''),
+    POSTMARK_SERVER_TOKEN: z.string().default(''),
     /** Base URL used in links inside emails (verification, password reset). */
     APP_PUBLIC_URL: z.url().default('http://localhost:8081'),
     /** OAuth client ids allowed as the `aud` of Google ID tokens. Empty disables Google sign-in. */
@@ -100,6 +117,27 @@ export const EnvSchema = z
         code: 'custom',
         path: ['CLOUDINARY_API_SECRET'],
         message: 'Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET together',
+      });
+    }
+    // A chosen provider must have its keys, so it fails at start-up, not at the first sign-in.
+    const required: Record<string, (keyof typeof env)[]> = {
+      twilio: ['TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN'],
+      msg91: ['MSG91_AUTH_KEY', 'MSG91_TEMPLATE_ID'],
+      resend: ['RESEND_API_KEY', 'EMAIL_FROM'],
+      postmark: ['POSTMARK_SERVER_TOKEN', 'EMAIL_FROM'],
+    };
+    for (const provider of [env.SMS_PROVIDER, env.EMAIL_PROVIDER]) {
+      for (const key of required[provider] ?? []) {
+        if (!env[key]) {
+          ctx.addIssue({ code: 'custom', path: [key], message: `required when using ${provider}` });
+        }
+      }
+    }
+    if (env.SMS_PROVIDER === 'twilio' && !env.TWILIO_FROM && !env.TWILIO_MESSAGING_SERVICE_SID) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['TWILIO_FROM'],
+        message: 'Set TWILIO_FROM or TWILIO_MESSAGING_SERVICE_SID',
       });
     }
     if (env.DISCOVERY_DEFAULT_RADIUS_KM > env.DISCOVERY_MAX_RADIUS_KM) {

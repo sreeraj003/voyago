@@ -132,15 +132,14 @@ export function TripFormWizard({
             hint="Plan, pace, what to bring. Everyone pays their own way."
             error={fieldError('description')}
           />
-          {features.coverUploads ? (
-            <CoverField
-              previewUri={form.coverPreview}
-              onUploaded={(coverImageId, coverPreview) =>
-                setForm({ ...form, coverImageId, coverPreview })
-              }
-              onRemove={() => setForm({ ...form, coverImageId: null, coverPreview: null })}
-            />
-          ) : null}
+          <CoverField
+            enabled={features.coverUploads}
+            previewUri={form.coverPreview}
+            onUploaded={(coverImageId, coverPreview) =>
+              setForm({ ...form, coverImageId, coverPreview })
+            }
+            onRemove={() => setForm({ ...form, coverImageId: null, coverPreview: null })}
+          />
           {fieldError('coverImageId') ? (
             <FormMessage tone="error">{fieldError('coverImageId')}</FormMessage>
           ) : null}

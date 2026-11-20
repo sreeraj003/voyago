@@ -2,17 +2,19 @@ import { generateKeyPair, exportJWK, SignJWT, createLocalJWKSet, type JWK } from
 import { validateEnv } from '../config/env.schema.js';
 import { createEmailSender, DevEmailSender } from './delivery/email-sender.js';
 import { createSmsSender, DevSmsSender } from './delivery/sms-sender.js';
+import { type HttpFetch } from '../integrations/http-fetch.js';
 import { PasswordService } from './password.service.js';
 import { SocialTokenVerifier } from './social/social-token.verifier.js';
 import { TokenService } from './token.service.js';
 
-const config = validateEnv({
+const baseEnv = {
   DATABASE_URL: 'postgresql://u:p@localhost:5432/db',
   REDIS_URL: 'redis://localhost:6379',
   JWT_ACCESS_SECRET: 'unit-test-access-secret-0123456789abcdef',
   OTP_HMAC_SECRET: 'unit-test-otp-secret-0123456789abcdefghij',
   GOOGLE_CLIENT_IDS: 'voyago-android.apps.googleusercontent.com',
-});
+};
+const config = validateEnv(baseEnv);
 
 describe('PasswordService', () => {
   const passwords = new PasswordService();
@@ -75,6 +77,86 @@ describe('development delivery adapters', () => {
     expect(createSmsSender(config).enabled).toBe(false);
     expect(createEmailSender(config).enabled).toBe(false);
     expect(createSmsSender({ ...config, SMS_PROVIDER: 'dev' }).enabled).toBe(true);
+  });
+});
+
+describe('real delivery providers', () => {
+  const recorder = (status = 200, json: unknown = {}) => {
+    const calls: { url: string; init: RequestInit & { body: string } }[] = [];
+    const fetchImpl = ((url: string, init: RequestInit) => {
+      calls.push({ url, init: init as RequestInit & { body: string } });
+      return Promise.resolve(new Response(JSON.stringify(json), { status }));
+    }) as unknown as HttpFetch;
+    return { calls, fetchImpl };
+  };
+
+  it('sends SMS through Twilio with basic auth', async () => {
+    const { calls, fetchImpl } = recorder(201);
+    const sms = createSmsSender(
+      {
+        ...config,
+        SMS_PROVIDER: 'twilio',
+        TWILIO_ACCOUNT_SID: 'AC123',
+        TWILIO_AUTH_TOKEN: 'tok',
+        TWILIO_FROM: '+15550001111',
+      },
+      fetchImpl,
+    );
+    expect(sms.enabled).toBe(true);
+    await sms.send('+919876543210', '123456 is your Voyago code.', { code: '123456' });
+    expect(calls[0]?.url).toBe('https://api.twilio.com/2010-04-01/Accounts/AC123/Messages.json');
+    const body = new URLSearchParams(calls[0]?.init.body ?? '');
+    expect(body.get('To')).toBe('+919876543210');
+    expect(body.get('From')).toBe('+15550001111');
+  });
+
+  it('sends the DLT template through MSG91 with the code variable', async () => {
+    const { calls, fetchImpl } = recorder(200, { type: 'success' });
+    const sms = createSmsSender(
+      { ...config, SMS_PROVIDER: 'msg91', MSG91_AUTH_KEY: 'k', MSG91_TEMPLATE_ID: 't1' },
+      fetchImpl,
+    );
+    await sms.send('+919876543210', 'ignored', { code: '654321' });
+    expect(JSON.parse(calls[0]?.init.body ?? '')).toEqual({
+      template_id: 't1',
+      short_url: '0',
+      recipients: [{ mobiles: '919876543210', otp: '654321' }],
+    });
+    const failing = recorder(200, { type: 'error' });
+    await expect(
+      createSmsSender(
+        { ...config, SMS_PROVIDER: 'msg91', MSG91_AUTH_KEY: 'k', MSG91_TEMPLATE_ID: 't1' },
+        failing.fetchImpl,
+      ).send('+919876543210', 'x', { code: '1' }),
+    ).rejects.toThrow('MSG91');
+  });
+
+  it('sends email through Resend or Postmark and reports failures', async () => {
+    const resend = recorder();
+    await createEmailSender(
+      {
+        ...config,
+        EMAIL_PROVIDER: 'resend',
+        RESEND_API_KEY: 're_1',
+        EMAIL_FROM: 'Voyago <a@b.in>',
+      },
+      resend.fetchImpl,
+    ).send({ to: 'x@y.in', subject: 'Hi', text: 'Body' });
+    expect(resend.calls[0]?.url).toBe('https://api.resend.com/emails');
+    expect(JSON.parse(resend.calls[0]?.init.body ?? '')).toMatchObject({ to: ['x@y.in'] });
+
+    const postmark = recorder(422);
+    await expect(
+      createEmailSender(
+        { ...config, EMAIL_PROVIDER: 'postmark', POSTMARK_SERVER_TOKEN: 'p', EMAIL_FROM: 'a@b.in' },
+        postmark.fetchImpl,
+      ).send({ to: 'x@y.in', subject: 'Hi', text: 'Body' }),
+    ).rejects.toThrow('Postmark responded 422');
+  });
+
+  it('refuses to start with a provider but no keys', () => {
+    expect(() => validateEnv({ ...baseEnv, SMS_PROVIDER: 'twilio' })).toThrow(/TWILIO_ACCOUNT_SID/);
+    expect(() => validateEnv({ ...baseEnv, EMAIL_PROVIDER: 'resend' })).toThrow(/RESEND_API_KEY/);
   });
 });
 
