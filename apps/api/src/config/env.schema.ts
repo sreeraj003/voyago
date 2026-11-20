@@ -14,30 +14,84 @@ const csv = z
  * Every environment variable the API reads. The app refuses to start when
  * a required value is missing or malformed, so misconfiguration fails fast.
  */
-export const EnvSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
-  CORS_ORIGINS: csv,
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
-  DATABASE_URL: z
-    .string()
-    .min(1, 'DATABASE_URL is required')
-    .refine((value) => /^postgres(ql)?:\/\//.test(value), 'DATABASE_URL must be a postgres:// URL'),
-  REDIS_URL: z
-    .string()
-    .min(1, 'REDIS_URL is required')
-    .refine(
-      (value) => /^rediss?:\/\//.test(value),
-      'REDIS_URL must be a redis:// or rediss:// URL',
-    ),
-  /** Set to true when running behind a load balancer so rate limits see the real client IP. */
-  TRUST_PROXY: z
-    .enum(['true', 'false'])
-    .default('false')
-    .transform((value) => value === 'true'),
-  RATE_LIMIT_TTL_SECONDS: z.coerce.number().int().positive().default(60),
-  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
-});
+export const EnvSchema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
+    CORS_ORIGINS: csv,
+    LOG_LEVEL: z
+      .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
+      .default('info'),
+    DATABASE_URL: z
+      .string()
+      .min(1, 'DATABASE_URL is required')
+      .refine(
+        (value) => /^postgres(ql)?:\/\//.test(value),
+        'DATABASE_URL must be a postgres:// URL',
+      ),
+    REDIS_URL: z
+      .string()
+      .min(1, 'REDIS_URL is required')
+      .refine(
+        (value) => /^rediss?:\/\//.test(value),
+        'REDIS_URL must be a redis:// or rediss:// URL',
+      ),
+    /** Set to true when running behind a load balancer so rate limits see the real client IP. */
+    TRUST_PROXY: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    RATE_LIMIT_TTL_SECONDS: z.coerce.number().int().positive().default(60),
+    RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
+
+    // ── Authentication (milestone 04) ──────────────────────────────────────────
+    /** HMAC key for access tokens. At least 32 characters; generate with `openssl rand -base64 48`. */
+    JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
+    ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
+    REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
+    /** HMAC key for OTP codes and one-time tokens. Different from JWT_ACCESS_SECRET. */
+    OTP_HMAC_SECRET: z.string().min(32, 'OTP_HMAC_SECRET must be at least 32 characters'),
+    /**
+     * `none`: phone sign-in is disabled (503). `dev`: codes are logged and kept in memory for
+     * tests; refused in production. A real SMS provider adapter is added when credentials exist.
+     */
+    SMS_PROVIDER: z.enum(['none', 'dev']).default('none'),
+    /** `none`: no email is sent (verification and reset return 503). `dev`: as for SMS. */
+    EMAIL_PROVIDER: z.enum(['none', 'dev']).default('none'),
+    /** Base URL used in links inside emails (verification, password reset). */
+    APP_PUBLIC_URL: z.url().default('http://localhost:8081'),
+    /** OAuth client ids allowed as the `aud` of Google ID tokens. Empty disables Google sign-in. */
+    GOOGLE_CLIENT_IDS: csv,
+    /** Apple Services/bundle ids allowed as `aud`. Empty disables Apple sign-in. */
+    APPLE_CLIENT_IDS: csv,
+    /** Requests per minute per client IP on each sign-in, OTP and recovery route. */
+    AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
+  })
+  .superRefine((env, ctx) => {
+    if (env.NODE_ENV !== 'production') return;
+    // Development-only adapters can never be enabled in production.
+    for (const key of ['SMS_PROVIDER', 'EMAIL_PROVIDER'] as const) {
+      if (env[key] === 'dev') {
+        ctx.addIssue({
+          code: 'custom',
+          path: [key],
+          message: `"dev" is not allowed in production`,
+        });
+      }
+    }
+    for (const key of ['JWT_ACCESS_SECRET', 'OTP_HMAC_SECRET'] as const) {
+      if (/change-me|example|dev-only/i.test(env[key])) {
+        ctx.addIssue({ code: 'custom', path: [key], message: 'placeholder secret in production' });
+      }
+    }
+    if (env.JWT_ACCESS_SECRET === env.OTP_HMAC_SECRET) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['OTP_HMAC_SECRET'],
+        message: 'must differ from JWT_ACCESS_SECRET',
+      });
+    }
+  });
 
 export type Env = z.infer<typeof EnvSchema>;
 

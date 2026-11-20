@@ -3,6 +3,8 @@ import { EnvValidationError, validateEnv } from './env.schema.js';
 const valid = {
   DATABASE_URL: 'postgresql://user:pass@localhost:5432/db',
   REDIS_URL: 'redis://localhost:6379',
+  JWT_ACCESS_SECRET: 'a'.repeat(40),
+  OTP_HMAC_SECRET: 'b'.repeat(40),
 };
 
 describe('validateEnv', () => {
@@ -32,5 +34,24 @@ describe('validateEnv', () => {
       expect(issues).toContain('DATABASE_URL');
       expect(issues).toContain('PORT');
     }
+  });
+
+  it('requires auth secrets of at least 32 characters', () => {
+    expect(() => validateEnv({ ...valid, JWT_ACCESS_SECRET: 'short' })).toThrow(
+      /JWT_ACCESS_SECRET/,
+    );
+  });
+
+  it('refuses development-only adapters and placeholder secrets in production', () => {
+    const production = { ...valid, NODE_ENV: 'production' };
+    expect(() => validateEnv({ ...production, SMS_PROVIDER: 'dev' })).toThrow(/SMS_PROVIDER/);
+    expect(() => validateEnv({ ...production, EMAIL_PROVIDER: 'dev' })).toThrow(/EMAIL_PROVIDER/);
+    expect(() =>
+      validateEnv({ ...production, JWT_ACCESS_SECRET: 'dev-only-change-me-0123456789abcdefghij' }),
+    ).toThrow(/placeholder/);
+    expect(() => validateEnv({ ...production, OTP_HMAC_SECRET: valid.JWT_ACCESS_SECRET })).toThrow(
+      /must differ/,
+    );
+    expect(validateEnv(production).SMS_PROVIDER).toBe('none');
   });
 });

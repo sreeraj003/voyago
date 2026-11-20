@@ -5,3 +5,5 @@ export * from './health.js';
 export * from './ids.js';
 export * from './pagination.js';
 export * from './trip-mode.js';
+export * from './auth.js';
+export * from './users.js';

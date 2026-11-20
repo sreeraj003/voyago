@@ -5,6 +5,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
+import { AUTH_RATE_LIMIT_SETTING } from './auth/auth-throttle.decorator.js';
 import { requestIdMiddleware } from './common/request-id.js';
 import { type AppConfig } from './config/app-config.js';
 import { APP_VERSION } from './version.js';
@@ -28,6 +29,7 @@ export async function createApp(
   app.useBodyParser('json', { limit: JSON_BODY_LIMIT });
   app.useBodyParser('urlencoded', { limit: JSON_BODY_LIMIT, extended: false });
   app.set('trust proxy', config.TRUST_PROXY);
+  app.set(AUTH_RATE_LIMIT_SETTING, config.AUTH_RATE_LIMIT_MAX);
 
   app.useLogger(app.get(Logger));
   app.setGlobalPrefix(API_PREFIX);
@@ -44,6 +46,7 @@ export async function createApp(
       .setTitle('Voyago API')
       .setDescription('REST API for the Voyago social riding and travel platform')
       .setVersion(APP_VERSION)
+      .addBearerAuth()
       .build(),
   );
   SwaggerModule.setup('api/docs', app, document);

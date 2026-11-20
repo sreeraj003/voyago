@@ -2,6 +2,7 @@ import { type DynamicModule, Module, type Type } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_PIPE } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
+import { AuthModule } from './auth/auth.module.js';
 import { AuthGuard } from './common/auth/auth.guard.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { ZodValidationPipe } from './common/pipes/zod-validation.pipe.js';
@@ -11,6 +12,7 @@ import { ConfigModule } from './config/config.module.js';
 import { PrismaModule } from './database/prisma.module.js';
 import { HealthModule } from './health/health.module.js';
 import { RedisModule } from './redis/redis.module.js';
+import { UsersModule } from './users/users.module.js';
 
 /** Fields that must never reach the logs. */
 const REDACTED_PATHS = [
@@ -21,6 +23,11 @@ const REDACTED_PATHS = [
   '*.token',
   '*.accessToken',
   '*.refreshToken',
+  '*.idToken',
+  '*.signupToken',
+  '*.code',
+  '*.currentPassword',
+  '*.newPassword',
   '*.otp',
   '*.phone',
   '*.email',
@@ -66,6 +73,8 @@ export class AppModule {
         PrismaModule,
         RedisModule,
         HealthModule,
+        AuthModule,
+        UsersModule,
         ...extraModules,
       ],
       providers: [

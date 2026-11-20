@@ -1,7 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Tabs } from 'expo-router';
+import { Redirect, Tabs } from 'expo-router';
 import { type ComponentProps } from 'react';
-import { type ColorValue } from 'react-native';
+import { ActivityIndicator, type ColorValue, View } from 'react-native';
+import { useAuthStore } from '../../src/store/auth-store';
 import { useModeStore } from '../../src/store/mode-store';
 import { useTheme } from '../../src/theme/use-theme';
 
@@ -16,6 +17,23 @@ const tabIcon =
 export default function TabsLayout() {
   const { colors } = useTheme();
   const mode = useModeStore((state) => state.mode);
+  const status = useAuthStore((state) => state.status);
+
+  if (status === 'unknown') {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.background,
+        }}
+      >
+        <ActivityIndicator accessibilityLabel="Loading" color={colors.textMuted} />
+      </View>
+    );
+  }
+  if (status === 'signedOut') return <Redirect href="/sign-in" />;
 
   return (
     <Tabs

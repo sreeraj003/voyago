@@ -76,6 +76,10 @@ erDiagram
 |            | `user_preferences`                                  | Mode, interests, budget range, privacy and notification settings (1:1 with users).               |
 |            | `user_blocks`                                       | Safety blocks. Not in the spec's list; added because blocking is a free core safety feature.     |
 |            | `motorcycles`                                       | Riders' bikes (no registration plates stored).                                                   |
+| Auth       | `auth_sessions`                                     | One row per refresh token (SHA-256 hash only). Rotation chain and revocation reason.             |
+|            | `auth_identities`                                   | Linked Google / Apple accounts (`provider` + provider subject id).                               |
+|            | `otp_challenges`                                    | Phone sign-in codes: HMAC of the code, attempts, expiry. Never the code itself.                  |
+|            | `verification_tokens`                               | Email verification and password reset links (SHA-256 hash only, single use).                     |
 | Trips      | `trips`                                             | Rides and travel trips. One model; `mode` is `RIDE` or `TRAVEL`.                                 |
 |            | `trip_stops`                                        | Ordered route stops with a geography point.                                                      |
 |            | `trip_participants`                                 | Who is on a trip and in what role.                                                               |
@@ -99,6 +103,9 @@ erDiagram
 - **Trip `origin` is the exact meeting point.** APIs must return only `origin_name` (or a coarsened
   point) to the public, and the exact point only to approved participants (enforced in milestone 06/07).
 - **Contact details are private.** `users.email` and `users.phone` are never part of public payloads.
+- **No date of birth or gender.** Removed in milestone 04: there is no product or legal need yet.
+- **No secrets at rest in plain form.** Passwords are Argon2id hashes; refresh tokens and email
+  links are SHA-256 hashes; OTP codes are HMAC-SHA-256 with a server secret.
 - **No card data.** `payments` stores gateway order/payment ids, amounts and status only.
 - **Notifications and audit metadata** carry ids, not personal data.
 
@@ -181,7 +188,6 @@ discovery queries are written.
 
 | Item                                             | Milestone | Note                                                |
 | ------------------------------------------------ | --------- | --------------------------------------------------- |
-| Auth sessions / refresh tokens / OTP challenges  | 04        | Tables added with the chosen sign-in method.        |
 | Trip and destination text search (`pg_trgm`)     | 06        |                                                     |
 | Device push tokens (FCM)                         | 09        |                                                     |
 | Moderation actions table, admin notes            | 10        | `audit_logs` already records privileged actions.    |
@@ -221,5 +227,18 @@ pnpm --filter @voyago/api test:e2e                         # constraint + smoke 
 `dev_meera`, `dev_rahul`, all `@example.com`), a riding community, two published community trips
 (Nandi Hills ride, Coorg weekend), a draft ride, a sample verified operator with one package and
 departure, a trip chat, a join request and the two proposed subscription plans. Every row has a
-fixed id beginning `5eed0000`, so re-running changes nothing. It refuses to run when
+fixed id beginning `5eed0000`, so re-running changes nothing. The `dev_*` accounts have email verified and the password `voyago-dev-password` (override with
+`SEED_DEV_PASSWORD`) so the apps can sign in locally. It refuses to run when
 `NODE_ENV=production` or against a non-local database host unless `ALLOW_REMOTE_SEED=true`.
+
+## Milestone 04 changes (`20261120072947_auth_and_profiles`)
+
+- New tables `auth_sessions`, `auth_identities`, `otp_challenges`, `verification_tokens` (above).
+- `users`: removed `birth_date`; added `country` (ISO 3166-1 alpha-2, default `IN`) and
+  `languages` (ISO 639-1 codes, at most 10).
+- `user_preferences`: removed `show_age`; added `preferred_activities`, `travel_styles`,
+  `preferred_destinations`, `group_size_min/max` (1 to 500, min ≤ max), `riding_experience`.
+- `motorcycles`: added `verification_status` (moderators set it in a later milestone).
+- CHECK constraints: country format, list limits, group-size range, session hash format and expiry,
+  OTP phone in E.164, OTP attempts 0 to 10, token hash formats.
+- Cleanup of expired sessions, OTP challenges and tokens is a scheduled job (milestone 15).

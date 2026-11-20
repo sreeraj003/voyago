@@ -12,6 +12,7 @@
  * Run: pnpm db:seed   (or: pnpm --filter @voyago/api db:seed)
  */
 import 'dotenv/config';
+import { hash } from '@node-rs/argon2';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { type GeoPoint } from '@voyago/shared';
 import { PrismaClient } from '../src/generated/prisma/client.js';
@@ -75,7 +76,19 @@ function nextSaturday(hourIst: number, weeksAhead = 0): Date {
   return date;
 }
 
+/**
+ * Password for the sample dev_* accounts, so the apps can sign in locally. These accounts are
+ * fake and the seed refuses to run against production or non-local databases.
+ */
+const DEV_PASSWORD = process.env.SEED_DEV_PASSWORD ?? 'voyago-dev-password';
+
 async function main(): Promise<void> {
+  const devPasswordHash = await hash(DEV_PASSWORD, {
+    algorithm: 2,
+    memoryCost: 19_456,
+    timeCost: 2,
+    parallelism: 1,
+  });
   const prisma = new PrismaClient({
     adapter: new PrismaPg({ connectionString: assertSafeToSeed(process.env.DATABASE_URL) }),
   });
@@ -115,8 +128,17 @@ async function main(): Promise<void> {
       ];
       for (const user of users) {
         const data = { ...user, email: `${user.username}@example.com` };
-        await tx.user.upsert({ where: { id: user.id }, create: data, update: data });
+        await tx.user.upsert({
+          where: { id: user.id },
+          create: { ...data, passwordHash: devPasswordHash, emailVerifiedAt: new Date() },
+          update: data,
+        });
       }
+      // Accounts seeded before sign-in existed get the dev password once; later runs keep it.
+      await tx.user.updateMany({
+        where: { id: { in: users.map((u) => u.id) }, passwordHash: null },
+        data: { passwordHash: devPasswordHash, emailVerifiedAt: new Date() },
+      });
 
       await tx.userPreference.upsert({
         where: { userId: USERS.asha },

@@ -6,9 +6,9 @@ verified before the next starts.
 | #   | Milestone                                   | Status      |
 | --- | ------------------------------------------- | ----------- |
 | 01  | Project foundation and architecture         | Done        |
-| 02  | Database design and migrations              | Not started |
-| 03  | Backend foundation and API conventions      | Not started |
-| 04  | Authentication and user profiles            | Not started |
+| 02  | Database design and migrations              | Done        |
+| 03  | Backend foundation and API conventions      | Done        |
+| 04  | Authentication and user profiles            | Done        |
 | 05  | Trip creation and lifecycle                 | Not started |
 | 06  | Discovery and geospatial search             | Not started |
 | 07  | Join requests and participant management    | Not started |
@@ -21,6 +21,89 @@ verified before the next starts.
 | 14  | Subscriptions and monetisation              | Not started |
 | 15  | Analytics, observability and operations     | Not started |
 | 16  | Security, testing, launch readiness, deploy | Not started |
+
+---
+
+## Milestone 04: Authentication, accounts and profiles (2026-11-20)
+
+Sign-in methods chosen for launch: **phone OTP and email + password**. Google and Apple adapters
+are built and switch on when their client ids are configured; until then they return 503.
+
+### Implemented
+
+- **Email + password:** register, login, change password, forgot / reset password, email
+  verification links. Argon2id (19 MiB, t=2, p=1). A dummy hash is checked when no account
+  matches, so timing does not reveal accounts.
+- **Phone OTP:** 6-digit codes from `crypto.randomInt`, stored as HMAC-SHA-256, valid 5 minutes,
+  5 attempts, single use, a new code replaces the old one. Limits: 3 codes per number per 15
+  minutes and 10 per day, plus the per-IP route limit. New numbers get a 15-minute signup token
+  and choose a username (`/auth/signup/complete`).
+- **Google / Apple:** ID tokens verified against the providers' JWKS (issuer, audience = configured
+  client ids, signature). Linked by `(provider, subject)`. Auto-linking to an existing account
+  only when both the provider and Voyago have verified the same email.
+- **Sessions:** 15-minute HS256 access tokens (`sub`, `sid` = session family). Opaque 256-bit
+  refresh tokens stored as SHA-256, valid 30 days, rotated on every refresh. Reusing a rotated
+  token revokes the whole family. Logout revokes this device's family, logout-all every session,
+  password change signs out other devices, password reset signs out all. The guard checks the
+  session and account status on every request, so logout and suspension apply immediately.
+- **Account enumeration:** register and forgot-password return the same 202 whether or not the
+  email exists (the real owner gets an email instead); login returns one generic 401; OTP request
+  is always 202. Only a taken _username_ returns 409, because usernames are public.
+- **Rate limits:** `AUTH_RATE_LIMIT_MAX` (default 10) requests per minute per IP on each sign-in,
+  OTP and recovery route; 10 failed passwords per account lock it for 15 minutes (Redis).
+- **Providers:** `SMS_PROVIDER` and `EMAIL_PROVIDER` are `none` or `dev`. `none` makes phone sign-in
+  and email-dependent routes return 503 rather than pretend. `dev` logs messages locally and is
+  rejected by env validation and by the adapter constructor when `NODE_ENV=production`. Real
+  providers are added when credentials exist.
+- **Profiles:** `GET/PATCH /me` (name, username, bio, city, country, languages),
+  `GET/PATCH /me/preferences` (mode, interests, activities, travel styles, destinations, budget
+  range, group size, riding experience, visibility, messaging and notification settings),
+  `/me/motorcycles` CRUD (make, model, year, cc, category, nickname, primary; no registration
+  numbers or documents), `GET /users/:username` public profile.
+- **Privacy:** public profiles never include email, phone, role, status or bike nicknames. Blocks in
+  either direction and inactive accounts return 404. `PRIVATE` profiles, and `FOLLOWERS` profiles
+  seen by non-followers, show only name, username and verification badges.
+- **Mobile:** sign-in, register, phone OTP (with username step), forgot password, reset-password and
+  verify-email link screens, and a Profile tab with edit form, visibility setting, resend
+  verification and sign-out. Refresh token in the Keychain / Keystore (`expo-secure-store`),
+  access token in memory, single-flight refresh on 401. Tabs require sign-in.
+- **Seed:** `dev_*` accounts can sign in with `voyago-dev-password`.
+
+### Database changes
+
+Migration `20261120072947_auth_and_profiles`; see `docs/DATABASE.md`.
+
+### APIs
+
+See the endpoint table in `docs/API.md`: 15 `/auth/*` routes, 8 `/me*` routes, `GET /users/:username`.
+
+### Tests
+
+- API e2e (real Postgres/PostGIS and Redis): 74 tests, 28 new in `auth.e2e-spec.ts` and
+  `users.e2e-spec.ts`: registration, enumeration safety, login lockout, refresh rotation and reuse
+  detection, logout / logout-all, tampered tokens, suspended accounts, email verification,
+  password reset and change, OTP signup / sign-in / attempt and per-number limits, providers
+  disabled, auth rate limit, profile updates ignoring protected fields, public profile privacy
+  (no contact details, visibility, blocks), preferences ranges, motorcycle ownership.
+- API unit: argon2id, token signing and purpose separation, `alg=none` rejection, social token
+  verification with a local JWKS, production refusal of dev adapters, env rules.
+- Shared: schema normalisation and validation. Mobile: refresh-and-retry, sign-out on rejected
+  refresh, field errors, sign-in screen.
+- Manual: Expo web against the live API: sign in (wrong then right password), edit profile,
+  reload restores the session, sign out, phone code request.
+
+### Outstanding
+
+- **Real SMS and email providers** need accounts and credentials (for example MSG91 or Twilio for
+  SMS with DLT registration in India, and SES or Postmark for email). Until then production runs
+  with `none`: email/password works, but phone sign-in, verification and reset emails return 503.
+- **Google / Apple** need OAuth client ids and the native sign-in SDKs in the app (the API side is
+  ready). Apple also requires "Sign in with Apple" whenever another social login is offered on iOS.
+- **Profile photos** wait for object storage (signed uploads), planned with media in a later milestone.
+- **Account deletion and data export** are planned for milestone 16 (privacy and launch readiness).
+- Sliding 30-day refresh sessions have no absolute maximum yet; expired rows are not yet cleaned up.
+- The web build stores the refresh token in localStorage; a production web client should use an
+  httpOnly cookie.
 
 ---
 

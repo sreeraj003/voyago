@@ -37,6 +37,11 @@ jobs:
       DATABASE_URL: postgresql://voyago:ci-only-password@localhost:5432/voyago?schema=public
       REDIS_URL: redis://localhost:6379
       LOG_LEVEL: silent
+      # CI-only values; real deployments read secrets from the secret manager.
+      JWT_ACCESS_SECRET: ci-only-access-secret-not-used-anywhere-else
+      OTP_HMAC_SECRET: ci-only-otp-secret-not-used-anywhere-else-0
+      SMS_PROVIDER: dev
+      EMAIL_PROVIDER: dev
 
     steps:
       - uses: actions/checkout@v5

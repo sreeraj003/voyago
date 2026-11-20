@@ -20,6 +20,44 @@ covered by `apps/api/test/api-foundation.e2e-spec.ts`.
 | GET    | `/api/v1/health`       | Public | Alias of `/health/ready` (used by the mobile and admin apps).            |
 | GET    | `/api/docs`            | Public | Swagger UI.                                                              |
 
+### Authentication (`/api/v1/auth`)
+
+| Method | Path                         | Auth   | Success | Description                                                            |
+| ------ | ---------------------------- | ------ | ------- | ---------------------------------------------------------------------- |
+| GET    | `/auth/methods`              | Public | 200     | Which sign-in methods this server has configured.                      |
+| POST   | `/auth/register`             | Public | 202     | Email, password, username, display name. Same reply if email exists.   |
+| POST   | `/auth/login`                | Public | 200     | Email + password → tokens. One generic 401 for every failure.          |
+| POST   | `/auth/refresh`              | Public | 200     | Rotates the refresh token. Reusing an old one signs out that device.   |
+| POST   | `/auth/logout`               | Bearer | 204     | Signs out this device.                                                 |
+| POST   | `/auth/logout-all`           | Bearer | 204     | Signs out every device.                                                |
+| POST   | `/auth/otp/request`          | Public | 202     | Texts a 6-digit code. 503 when no SMS provider is configured.          |
+| POST   | `/auth/otp/verify`           | Public | 200     | `AUTHENTICATED` with tokens, or `SIGNUP_REQUIRED` with a signup token. |
+| POST   | `/auth/social/:provider`     | Public | 200     | `google` or `apple` ID token. Same result shape as OTP verify.         |
+| POST   | `/auth/signup/complete`      | Public | 201     | Signup token + username + display name → tokens.                       |
+| POST   | `/auth/email/verify/request` | Bearer | 202     | Sends a new verification link.                                         |
+| POST   | `/auth/email/verify`         | Public | 204     | Confirms the email with the link token.                                |
+| POST   | `/auth/password/forgot`      | Public | 202     | Emails a reset link (1 hour). Same reply if the account is unknown.    |
+| POST   | `/auth/password/reset`       | Public | 204     | New password with the link token. Signs out every device.              |
+| POST   | `/auth/password/change`      | Bearer | 204     | Current + new password. Signs out other devices.                       |
+
+### Profiles
+
+| Method | Path                  | Auth   | Description                                                                  |
+| ------ | --------------------- | ------ | ---------------------------------------------------------------------------- |
+| GET    | `/me`                 | Bearer | My profile, including my email, phone and verification status.               |
+| PATCH  | `/me`                 | Bearer | Name, username, bio, city, country, languages. Other fields are ignored.     |
+| GET    | `/me/preferences`     | Bearer | Travel preferences, profile visibility, messaging and notification settings. |
+| PATCH  | `/me/preferences`     | Bearer | Partial update. Ranges are checked against stored values too.                |
+| GET    | `/me/motorcycles`     | Bearer | My motorcycles, primary first.                                               |
+| POST   | `/me/motorcycles`     | Bearer | Add (max 10). No registration numbers or documents are accepted.             |
+| PATCH  | `/me/motorcycles/:id` | Bearer | Update. Another member's id returns 404.                                     |
+| DELETE | `/me/motorcycles/:id` | Bearer | Remove. Another member's id returns 404.                                     |
+| GET    | `/users/:username`    | Bearer | Public profile. Never contains email or phone. Blocked or inactive → 404.    |
+
+Public profiles: `PUBLIC` shows the full public profile to signed-in members; `FOLLOWERS` shows it
+to followers and the basics (name, username, verification badges) to others; `PRIVATE` shows only
+the basics. Schemas: `PrivateProfileSchema`, `PublicProfileSchema` in `@voyago/shared`.
+
 Health endpoints are not rate limited and not wrapped in `{ data }`, because load balancers and
 orchestrators read them directly.
 
@@ -67,14 +105,14 @@ Every error, from validation to an unexpected crash, has the same shape (`ApiErr
 | ------ | -------------------------------------------------------------------------------------- |
 | 400    | Validation failed (`details` lists each field), malformed JSON, invalid cursor or UUID |
 | 401    | Not authenticated (every route that is not explicitly public)                          |
-| 403    | Authenticated but not allowed (from milestone 04)                                      |
+| 403    | Authenticated but not allowed, or signing in to a suspended account                    |
 | 404    | Route or record not found                                                              |
 | 409    | Conflicts with existing data (duplicate, or related records prevent the change)        |
 | 413    | Request body larger than 100 KB                                                        |
 | 422    | Valid input that breaks a data rule enforced by the database                           |
 | 429    | Rate limit exceeded                                                                    |
 | 500    | Unexpected error. The message is always generic                                        |
-| 503    | Readiness probe only: a dependency is down                                             |
+| 503    | A dependency is down (readiness), or a provider is not configured (SMS, email, Google) |
 
 **No internals leak.** Stack traces, SQL, table, column and constraint names never appear in
 responses. Database errors are mapped by `AllExceptionsFilter`: unique violation → 409, foreign key
@@ -129,14 +167,38 @@ are no more results. A tampered cursor returns 400. Server side, use `CursorPage
 ## Authentication
 
 The API is **secure by default**. A global `AuthGuard` rejects every route with 401 unless it is
-marked `@Public()`. Sign-in (milestone 04) will plug token verification into that guard. Until then
-only the health endpoints and Swagger are reachable.
+marked `@Public()`. Send `Authorization: Bearer <accessToken>`.
+
+```json
+// POST /api/v1/auth/login → 200
+{
+  "data": {
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9…",
+    "expiresIn": 900,
+    "refreshToken": "q3V0…43 characters",
+    "tokenType": "Bearer"
+  }
+}
+```
+
+- **Access token:** HS256 JWT, 15 minutes (`ACCESS_TOKEN_TTL_SECONDS`). Claims `sub` (user id) and
+  `sid` (session family). The guard also checks on every request that the session is still signed
+  in and the account is active, so logout and suspension take effect at once.
+- **Refresh token:** opaque, 30 days (`REFRESH_TOKEN_TTL_DAYS`), single use. Each refresh returns
+  a new pair; store the new refresh token. Presenting an already-used refresh token revokes that
+  sign-in on every device that shares it (theft detection), so apps must not refresh in parallel.
+- Mobile keeps the refresh token in the Keychain / Keystore and the access token in memory.
+- On 401 from a protected route, refresh once and retry; if refresh returns 401, sign in again.
+- Phone and social sign-ins return `{ status: "SIGNUP_REQUIRED", signupToken }` for new people;
+  finish with `POST /auth/signup/complete`. The signup token lasts 15 minutes.
 
 ## Rate limiting
 
 A global limit per client IP (`RATE_LIMIT_MAX` requests per `RATE_LIMIT_TTL_SECONDS`, default 120 per
-60 s) returns 429 when exceeded. Health probes are exempt. Stricter per-route limits (for example on
-login and OTP) are added with `@Throttle()` where needed. Behind a load balancer, set
+60 s) returns 429 when exceeded. Health probes are exempt. Sign-in, OTP and recovery routes have a
+stricter limit: `AUTH_RATE_LIMIT_MAX` (default 10) per minute per IP for each route. In addition,
+10 failed passwords lock that account's password sign-in for 15 minutes, and each phone number can
+receive 3 codes per 15 minutes and 10 per day. Each code allows 5 attempts. Behind a load balancer, set
 `TRUST_PROXY=true` so the real client IP is used.
 
 ## CORS and headers

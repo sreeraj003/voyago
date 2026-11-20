@@ -7,3 +7,4 @@ coverage
 pnpm-lock.yaml
 apps/api/src/generated
 project-specs
+apps/mobile/expo-env.d.ts

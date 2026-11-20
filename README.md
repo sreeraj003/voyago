@@ -48,7 +48,12 @@ pnpm db:seed        # optional: development-only sample data
 ```
 
 Change `POSTGRES_PASSWORD` in `infra/docker/.env` and the matching password in
-`apps/api/.env` (`DATABASE_URL`) to something of your own.
+`apps/api/.env` (`DATABASE_URL`) to something of your own, and replace `JWT_ACCESS_SECRET` and
+`OTP_HMAC_SECRET` with values from `openssl rand -base64 48` (they must differ).
+
+Locally, `SMS_PROVIDER=dev` and `EMAIL_PROVIDER=dev` print OTP codes and email links in the API log
+instead of sending them. They are refused when `NODE_ENV=production`. The seeded `dev_*` accounts
+(for example `dev_asha@example.com`) sign in with the password `voyago-dev-password`.
 
 ## Running
 
