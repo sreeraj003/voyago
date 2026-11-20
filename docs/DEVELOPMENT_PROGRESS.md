@@ -65,6 +65,22 @@ verified before the next starts.
 | `@voyago/mobile` | Mode store, Ride/Travel selector, API client                          |
 | `@voyago/shared` | Schema validation                                                     |
 
+### Verification (completion gate)
+
+Run from a fresh clone with empty Docker volumes on 2026-11-20:
+
+- `pnpm install --frozen-lockfile`, `pnpm services:up`, `pnpm db:migrate`: passed.
+- `pnpm format:check`, `pnpm typecheck`, `pnpm lint`, `pnpm build`: passed.
+- `pnpm test`: 27 unit tests passed (API 13, admin 6, mobile 5, shared 3).
+- `pnpm --filter @voyago/api test:e2e`: 4 smoke tests passed against real Postgres/PostGIS + Redis.
+- Started the built API: `/api/v1/health` returned `ok` with all three dependencies `up`.
+- Started the API with a missing `DATABASE_URL`: it exited with code 1 and a readable error.
+- Exported the mobile app for web and loaded it in Chromium: Home, Ride/Travel selector and tabs
+  render with no runtime errors. (Wrapping a `Pressable` in `<Link asChild>` crashed on web with
+  Expo SDK 58, so Home navigates with `router.navigate` instead.)
+- Not verified here: the native iOS/Android builds (needs a device or simulator) and CI on GitHub
+  (runs on the first push).
+
 ### Open decisions
 
 - Map provider (Google Maps, Mapbox, or MapLibre + OSM tiles).

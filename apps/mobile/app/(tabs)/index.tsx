@@ -1,4 +1,4 @@
-import { type Href, Link } from 'expo-router';
+import { type Href, useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { ModeSelector } from '../../src/components/ModeSelector';
 import { Screen } from '../../src/components/Screen';
@@ -8,6 +8,7 @@ import { useTheme } from '../../src/theme/use-theme';
 
 export default function HomeScreen() {
   const { colors } = useTheme();
+  const router = useRouter();
   const mode = useModeStore((state) => state.mode);
   const accent = mode === 'RIDE' ? colors.ride : colors.travel;
 
@@ -28,23 +29,23 @@ export default function HomeScreen() {
       <ModeSelector />
       <View style={styles.actions}>
         {actions.map((action) => (
-          <Link key={action.label} href={action.href} asChild>
-            <Pressable
-              accessibilityRole="button"
-              style={[
-                styles.action,
-                action.primary
-                  ? { backgroundColor: accent }
-                  : { borderColor: accent, borderWidth: 1.5 },
-              ]}
+          <Pressable
+            key={action.label}
+            accessibilityRole="button"
+            onPress={() => router.navigate(action.href)}
+            style={[
+              styles.action,
+              action.primary
+                ? { backgroundColor: accent }
+                : { borderColor: accent, borderWidth: 1.5 },
+            ]}
+          >
+            <Text
+              style={[styles.actionLabel, { color: action.primary ? colors.onAccent : accent }]}
             >
-              <Text
-                style={[styles.actionLabel, { color: action.primary ? colors.onAccent : accent }]}
-              >
-                {action.label}
-              </Text>
-            </Pressable>
-          </Link>
+              {action.label}
+            </Text>
+          </Pressable>
         ))}
       </View>
     </Screen>

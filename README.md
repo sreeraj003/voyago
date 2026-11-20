@@ -14,6 +14,7 @@ This repository is a TypeScript monorepo:
 | `packages/shared` | Shared Zod schemas and TypeScript types                 |
 | `infra/docker`    | Docker Compose for local PostgreSQL/PostGIS and Redis   |
 | `docs`            | Architecture, decisions (ADRs) and development progress |
+| `project-specs`   | Product brief and milestone specifications (00 to 16)   |
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the design and
 [docs/DEVELOPMENT_PROGRESS.md](docs/DEVELOPMENT_PROGRESS.md) for status.
