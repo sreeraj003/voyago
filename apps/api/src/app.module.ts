@@ -11,6 +11,7 @@ import { type AppConfig } from './config/app-config.js';
 import { ConfigModule } from './config/config.module.js';
 import { PrismaModule } from './database/prisma.module.js';
 import { HealthModule } from './health/health.module.js';
+import { IntegrationsModule } from './integrations/integrations.module.js';
 import { RedisModule } from './redis/redis.module.js';
 import { TripsModule } from './trips/trips.module.js';
 import { UsersModule } from './users/users.module.js';
@@ -74,6 +75,7 @@ export class AppModule {
         PrismaModule,
         RedisModule,
         HealthModule,
+        IntegrationsModule,
         AuthModule,
         UsersModule,
         TripsModule,

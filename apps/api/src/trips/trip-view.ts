@@ -33,6 +33,11 @@ export interface TripRecord {
   difficulty: Trip['difficulty'];
   minEngineCc: number | null;
   approvalRequired: boolean;
+  coverImageKey: string | null;
+  routeDistanceMeters: number | null;
+  routeDurationSeconds: number | null;
+  routeTravelMode: string | null;
+  routeComputedAt: Date | null;
   publishedAt: Date | null;
   startedAt: Date | null;
   completedAt: Date | null;
@@ -114,6 +119,7 @@ export function toTripView(
   geo: TripGeo,
   viewer: ViewerContext,
   participantCount: number,
+  coverImageUrl: string | null = null,
 ): Trip {
   const isOrganiser = trip.organiserId === viewer.user.id;
   const exactOrigin = isOrganiser || viewer.isParticipant || isStaff(viewer.user);
@@ -127,7 +133,7 @@ export function toTripView(
     status: trip.status,
     title: trip.title,
     description: trip.description,
-    coverImageUrl: null,
+    coverImageUrl,
     origin: {
       name: trip.originName,
       point: geo.origin ? (exactOrigin ? geo.origin : approximate(geo.origin)) : null,
@@ -145,6 +151,19 @@ export function toTripView(
     estimatedDistanceKm: trip.estimatedDistanceKm,
     estimatedDurationMinutes: trip.estimatedDurationMinutes,
     estimatesSource: 'ORGANISER',
+    route:
+      trip.routeDistanceMeters !== null &&
+      trip.routeDurationSeconds !== null &&
+      trip.routeComputedAt !== null &&
+      (trip.routeTravelMode === 'TWO_WHEELER' || trip.routeTravelMode === 'DRIVE')
+        ? {
+            distanceMeters: trip.routeDistanceMeters,
+            durationSeconds: trip.routeDurationSeconds,
+            travelMode: trip.routeTravelMode,
+            source: 'GOOGLE',
+            computedAt: trip.routeComputedAt.toISOString(),
+          }
+        : null,
     difficulty: trip.difficulty,
     minEngineCc: trip.minEngineCc,
     approvalRequired: trip.approvalRequired,

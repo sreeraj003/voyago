@@ -24,6 +24,38 @@ verified before the next starts.
 
 ---
 
+## Milestone 05 follow-up: Google Maps, date picker, cover photos (2026-11-20)
+
+### Implemented
+
+- **Google place search** (`apps/api/src/integrations`): Places API (New) autocomplete and
+  details, called by the API so the key stays on the server; India only, biased to Bengaluru,
+  session tokens for billing, rate limited. The app's place fields search Google and fill the
+  coordinates, with typed coordinates as a fallback.
+- **Road distance and time:** Google Routes API (`TWO_WHEELER` for rides, `DRIVE` for travel)
+  through all stops, stored on the trip and shown as "Road route … (Google Maps)" next to the
+  organiser's own estimates, which stay separate. No route is shown when Google has none.
+- **Open in Google Maps** link on the trip page (public URL scheme, no key); the meeting point is
+  included only for people who can see the exact spot.
+- **Date and time pickers:** native pickers on iOS/Android, the browser's picker on web.
+- **Cover photos:** signed direct upload to Cloudinary (folder, random id and formats fixed by the
+  signature, metadata stripped); the API accepts only the caller's own uploads and checks size.
+- **Off until configured:** `GET /features` tells the app what is set up; unconfigured features
+  return 503 and the app falls back or hides them.
+
+### Database changes
+
+Migration `20261120093000_trip_route_and_cover`; see `docs/DATABASE.md`.
+
+### Outstanding
+
+- Real `GOOGLE_MAPS_API_KEY` and Cloudinary credentials are needed in the server environment;
+  until then these features are off. They were tested against recorded responses, not live.
+- A rendered map in the app needs `react-native-maps` and a development build (later milestone).
+- Cover photos are not yet moderated (milestone 10); size is checked after upload.
+
+---
+
 ## Milestone 05: Trip creation and lifecycle (2026-11-20)
 
 ### Implemented

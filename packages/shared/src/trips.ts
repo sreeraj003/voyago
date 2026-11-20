@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { GeoPointSchema } from './geo.js';
+import { CoverImageIdSchema } from './maps-media.js';
 import { CursorPageQuerySchema } from './pagination.js';
 import { TripModeSchema } from './trip-mode.js';
 import { ActivityTypeSchema } from './users.js';
@@ -94,6 +95,8 @@ const tripFields = {
   minEngineCc: z.number().int().min(50).max(3000).nullable().optional(),
   visibility: TripVisibilityInputSchema.optional(),
   approvalRequired: z.boolean().optional(),
+  /** From an upload signature (`/uploads/cover-signature`). null removes the cover. */
+  coverImageId: CoverImageIdSchema.nullable().optional(),
 };
 
 /** Fields that relate to each other; checked on create and again after merging an edit. */
@@ -233,8 +236,21 @@ export const TripSchema = z.object({
   currency: z.string(),
   estimatedDistanceKm: z.number().int().nullable(),
   estimatedDurationMinutes: z.number().int().nullable(),
-  /** Always ORGANISER until a routing provider is integrated. */
+  /** `estimatedDistanceKm` / `estimatedDurationMinutes` are always the organiser's own. */
   estimatesSource: z.literal('ORGANISER'),
+  /**
+   * Road route through the stops, computed by Google Routes when the trip is published or its
+   * places change. null when routing is not configured or no route was found.
+   */
+  route: z
+    .object({
+      distanceMeters: z.number().int(),
+      durationSeconds: z.number().int(),
+      travelMode: z.enum(['TWO_WHEELER', 'DRIVE']),
+      source: z.literal('GOOGLE'),
+      computedAt: z.string(),
+    })
+    .nullable(),
   difficulty: TripDifficultySchema.nullable(),
   minEngineCc: z.number().int().nullable(),
   approvalRequired: z.boolean(),

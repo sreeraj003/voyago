@@ -66,8 +66,36 @@ export const EnvSchema = z
     APPLE_CLIENT_IDS: csv,
     /** Requests per minute per client IP on each sign-in, OTP and recovery route. */
     AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
+
+    // ── Maps and media (optional; features return 503 until configured) ───────
+    /**
+     * Server-side Google Maps Platform key with Places API (New) and Routes API enabled. Never
+     * sent to the apps: they call Voyago, which calls Google. Restrict it by API and server IP.
+     */
+    GOOGLE_MAPS_API_KEY: z.string().default(''),
+    CLOUDINARY_CLOUD_NAME: z.string().default(''),
+    CLOUDINARY_API_KEY: z.string().default(''),
+    /** Signs upload requests; stays on the server. */
+    CLOUDINARY_API_SECRET: z.string().default(''),
+    /** Top-level Cloudinary folder, so environments don't mix (voyago-dev, voyago-prod). */
+    CLOUDINARY_FOLDER: z
+      .string()
+      .regex(/^[a-z0-9_-]{1,40}$/)
+      .default('voyago-dev'),
   })
   .superRefine((env, ctx) => {
+    const cloudinary = [
+      env.CLOUDINARY_CLOUD_NAME,
+      env.CLOUDINARY_API_KEY,
+      env.CLOUDINARY_API_SECRET,
+    ];
+    if (cloudinary.some(Boolean) && !cloudinary.every(Boolean)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['CLOUDINARY_API_SECRET'],
+        message: 'Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET together',
+      });
+    }
     if (env.NODE_ENV !== 'production') return;
     // Development-only adapters can never be enabled in production.
     for (const key of ['SMS_PROVIDER', 'EMAIL_PROVIDER'] as const) {

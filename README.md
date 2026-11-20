@@ -55,6 +55,18 @@ Locally, `SMS_PROVIDER=dev` and `EMAIL_PROVIDER=dev` print OTP codes and email l
 instead of sending them. They are refused when `NODE_ENV=production`. The seeded `dev_*` accounts
 (for example `dev_asha@example.com`) sign in with the password `voyago-dev-password`.
 
+### Optional: Google Maps and Cloudinary
+
+Everything works without these; the app then asks for coordinates and hides cover photos. Put the
+values in `apps/api/.env` (or the server's secret store), never in git or in the mobile app.
+
+- **Google Maps** (`GOOGLE_MAPS_API_KEY`): place search and road distance/time. In Google Cloud
+  enable **Places API (New)** and **Routes API**, create an API key, and restrict it to those two
+  APIs and to your server's IP addresses.
+- **Cloudinary** (`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, all
+  three together): trip cover photos. `CLOUDINARY_FOLDER` keeps environments apart (`voyago-dev`,
+  `voyago-prod`).
+
 ## Running
 
 ```bash

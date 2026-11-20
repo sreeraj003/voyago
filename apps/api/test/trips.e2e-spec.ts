@@ -396,4 +396,33 @@ describe('trips (e2e)', () => {
       .set('authorization', bearer(bob))
       .expect(400);
   });
+
+  describe('maps and media when not configured', () => {
+    it('reports the features as off and refuses rather than pretending', async () => {
+      const features = await http()
+        .get('/api/v1/features')
+        .set('authorization', bearer(alice))
+        .expect(200);
+      expect(features.body).toEqual({
+        data: { placeSearch: false, routing: false, coverUploads: false },
+      });
+      await http()
+        .get('/api/v1/places/autocomplete')
+        .query({ q: 'Nandi', sessionToken: 'session-12345' })
+        .set('authorization', bearer(alice))
+        .expect(503);
+      await http()
+        .post('/api/v1/uploads/cover-signature')
+        .set('authorization', bearer(alice))
+        .expect(503);
+      await http().get('/api/v1/features').expect(401);
+
+      const trip = await create(alice);
+      expect(trip.route).toBeNull();
+      expect(trip.coverImageUrl).toBeNull();
+      const cover = `voyago-dev/trip-covers/${await userId('alice')}/${randomUUID()}`;
+      await patch(alice, trip.id, { coverImageId: cover }).expect(503);
+      await patch(alice, trip.id, { coverImageId: 'https://evil.example/x.jpg' }).expect(400);
+    });
+  });
 });

@@ -10,8 +10,9 @@ import {
  * Form state for creating and editing a trip. Inputs are strings; `toTripInput` converts and
  * validates them with the same shared schema the API uses, so errors match the server's.
  *
- * Places are entered as a name plus "latitude, longitude" until a map picker and geocoding
- * provider are integrated. Dates use the device's local time zone.
+ * Places hold a name plus "latitude, longitude": filled by Google place search when the server
+ * has it configured, or typed by hand. Dates are "YYYY-MM-DD HH:MM" in the device's time zone,
+ * set by the native date-time picker.
  */
 export type StopForm = { name: string; coords: string; arrival: string };
 
@@ -36,6 +37,10 @@ export type TripForm = {
   durationHours: string;
   difficulty: '' | 'EASY' | 'MODERATE' | 'CHALLENGING';
   minEngineCc: string;
+  /** Uploaded cover id. `undefined` leaves the cover unchanged, `null` removes it. */
+  coverImageId?: string | null;
+  /** Local or delivered URL used only for the preview. */
+  coverPreview: string | null;
 };
 
 export const emptyTripForm = (mode: 'RIDE' | 'TRAVEL' = 'RIDE'): TripForm => ({
@@ -59,6 +64,7 @@ export const emptyTripForm = (mode: 'RIDE' | 'TRAVEL' = 'RIDE'): TripForm => ({
   durationHours: '',
   difficulty: '',
   minEngineCc: '',
+  coverPreview: null,
 });
 
 export function parseCoords(text: string): GeoPoint | null {
@@ -119,13 +125,21 @@ export function toTripInput(form: TripForm): FormResult {
   const errors: Record<string, string> = {};
   const point = (text: string, field: string) => {
     const parsed = parseCoords(text);
-    if (!parsed) errors[field] = 'Enter "latitude, longitude", e.g. 13.0358, 77.5970';
+    if (!parsed) {
+      errors[field] =
+        text.trim() === ''
+          ? 'Choose a place or enter its coordinates'
+          : 'Enter "latitude, longitude", e.g. 13.0358, 77.5970';
+    }
     return parsed ?? { latitude: 0, longitude: 0 };
   };
   const date = (text: string, field: string, required: boolean) => {
     if (!required && text.trim() === '') return null;
     const parsed = parseLocalDateTime(text);
-    if (!parsed) errors[field] = 'Use the format YYYY-MM-DD HH:MM';
+    if (!parsed) {
+      errors[field] =
+        text.trim() === '' ? 'Choose a date and time' : 'Use the format YYYY-MM-DD HH:MM';
+    }
     return parsed ?? new Date(0).toISOString();
   };
 
@@ -159,6 +173,7 @@ export function toTripInput(form: TripForm): FormResult {
     minEngineCc: form.mode === 'RIDE' ? optionalInt(form.minEngineCc) : null,
     visibility: form.visibility,
     approvalRequired: form.approvalRequired,
+    ...(form.coverImageId === undefined ? {} : { coverImageId: form.coverImageId }),
   };
 
   const parsed = CreateTripSchema.safeParse(candidate);
@@ -202,6 +217,7 @@ export function fromTrip(trip: Trip): TripForm {
         : String(Math.round((trip.estimatedDurationMinutes / 60) * 10) / 10),
     difficulty: trip.difficulty ?? '',
     minEngineCc: trip.minEngineCc === null ? '' : String(trip.minEngineCc),
+    coverPreview: trip.coverImageUrl,
   };
 }
 

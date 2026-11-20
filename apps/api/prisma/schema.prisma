@@ -547,6 +547,13 @@ model Trip {
   minEngineCc              Int?                                   @map("min_engine_cc") @db.SmallInt
   difficulty               TripDifficulty?
   approvalRequired         Boolean                                @default(true) @map("approval_required")
+  /// Road route computed by Google Routes (planning data, never live location).
+  routeDistanceMeters      Int?                                   @map("route_distance_meters")
+  routeDurationSeconds     Int?                                   @map("route_duration_seconds")
+  /// TWO_WHEELER for rides, DRIVE for travel.
+  routeTravelMode          String?                                @map("route_travel_mode") @db.VarChar(20)
+  routeComputedAt          DateTime?                              @map("route_computed_at") @db.Timestamptz(3)
+  /// Cloudinary public id, e.g. voyago-prod/trip-covers/<user>/<uuid>. Not a URL.
   coverImageKey            String?                                @map("cover_image_key")
   publishedAt              DateTime?                              @map("published_at") @db.Timestamptz(3)
   startedAt                DateTime?                              @map("started_at") @db.Timestamptz(3)

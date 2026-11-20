@@ -2,13 +2,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { type Trip } from '@voyago/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, Linking, StyleSheet, Text, View } from 'react-native';
 import { cancelTrip, deleteTrip, getTrip, tripAction } from '../../../src/api/trips';
 import { useFormError } from '../../../src/auth/use-form-error';
 import { Button, FormMessage, TextField } from '../../../src/components/Form';
 import { FormScreen } from '../../../src/components/FormScreen';
 import { StatusBadge } from '../../../src/components/StatusBadge';
 import { formatRupees } from '../../../src/trips/trip-form';
+import { directionsUrl, routeSummary } from '../../../src/trips/trip-route';
 import { radius, spacing, typography } from '../../../src/theme/tokens';
 import { useTheme } from '../../../src/theme/use-theme';
 
@@ -42,10 +43,18 @@ function TripDetail({ trip }: { trip: Trip }) {
   ]
     .filter(Boolean)
     .join(', ');
+  const mapsUrl = directionsUrl(trip);
 
   return (
     <>
       <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        {trip.coverImageUrl ? (
+          <Image
+            source={{ uri: trip.coverImageUrl }}
+            style={styles.cover}
+            accessibilityLabel={`Cover photo for ${trip.title}`}
+          />
+        ) : null}
         <StatusBadge status={trip.status} />
         <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>
           {trip.title}
@@ -73,7 +82,15 @@ function TripDetail({ trip }: { trip: Trip }) {
         )}
         {line('Joining', trip.approvalRequired ? 'Organiser approves requests' : 'Open')}
         {line('Estimated cost per person', formatRupees(trip.estimatedBudgetPaise))}
+        {line('Road route', routeSummary(trip))}
         {line("Organiser's estimate", estimates || null)}
+        {mapsUrl ? (
+          <Button
+            title="Open in Google Maps"
+            variant="link"
+            onPress={() => void Linking.openURL(mapsUrl)}
+          />
+        ) : null}
         {line('Cancelled because', trip.cancellationReason)}
       </View>
       <TripActions trip={trip} />
@@ -188,4 +205,5 @@ const styles = StyleSheet.create({
   bold: { fontWeight: '600' },
   caption: { ...typography.caption },
   actions: { gap: spacing.sm },
+  cover: { width: '100%', aspectRatio: 1200 / 630, borderRadius: radius.md },
 });

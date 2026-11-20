@@ -109,3 +109,30 @@ describe('trip form parsing', () => {
     expect(toTripInput(form).ok).toBe(true);
   });
 });
+
+describe('trip form cover image', () => {
+  it('leaves the cover out unless it was changed', () => {
+    const untouched = toTripInput(validForm());
+    expect(untouched.ok && 'coverImageId' in untouched.input).toBe(false);
+    const removed = toTripInput({ ...validForm(), coverImageId: null });
+    expect(removed.ok && removed.input.coverImageId).toBeNull();
+  });
+
+  it('accepts an uploaded cover id and rejects anything else', () => {
+    const id =
+      'voyago-dev/trip-covers/0e6f7a52-6c6f-4f0b-9a55-0c1d2e3f4a5b/1b2c3d4e-5f60-4718-8a9b-0c1d2e3f4a5b';
+    const good = toTripInput({ ...validForm(), coverImageId: id });
+    expect(good.ok && good.input.coverImageId).toBe(id);
+    const bad = toTripInput({ ...validForm(), coverImageId: 'https://example.com/x.jpg' });
+    expect(bad.ok).toBe(false);
+  });
+
+  it('asks for a place or a date instead of a format when empty', () => {
+    const result = toTripInput({ ...validForm(), originCoords: '', departure: '' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.originCoords).toBe('Choose a place or enter its coordinates');
+      expect(result.errors.departure).toBe('Choose a date and time');
+    }
+  });
+});

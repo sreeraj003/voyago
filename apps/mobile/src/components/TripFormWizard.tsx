@@ -1,17 +1,21 @@
 import { type CreateTripInput } from '@voyago/shared';
 import { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Image, StyleSheet, Text, View } from 'react-native';
+import { useFeatures } from '../api/use-features';
 import { type TripForm, toTripInput, formatRupees } from '../trips/trip-form';
 import { radius, spacing, typography } from '../theme/tokens';
 import { useTheme } from '../theme/use-theme';
 import { Choice } from './Choice';
+import { CoverField } from './CoverField';
+import { DateTimeField } from './DateTimeField';
 import { Button, FormMessage, TextField } from './Form';
+import { PlaceField } from './PlaceField';
 
 const STEPS = ['Details', 'Route and dates', 'Group', 'Preview'] as const;
 
 /** Which form fields live on which step, so each step only reports its own errors. */
 const STEP_FIELDS: ((field: string) => boolean)[] = [
-  (f) => ['mode', 'activityType', 'title', 'description'].includes(f),
+  (f) => ['mode', 'activityType', 'title', 'description', 'coverImageId'].includes(f),
   (f) => /^(origin|destination|departure|returnAt|stops)/.test(f),
   () => true,
   () => true,
@@ -47,6 +51,7 @@ export function TripFormWizard({
   onSubmit,
 }: Props) {
   const { colors } = useTheme();
+  const features = useFeatures();
   const [form, setForm] = useState<TripForm>(initial);
   const [step, setStep] = useState(0);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -69,8 +74,8 @@ export function TripFormWizard({
     else if (result.ok) onSubmit(result.input);
   };
 
-  const updateStop = (index: number, key: 'name' | 'coords' | 'arrival', value: string) =>
-    set('stops')(form.stops.map((stop, i) => (i === index ? { ...stop, [key]: value } : stop)));
+  const updateStop = (index: number, patch: Partial<TripForm['stops'][number]>) =>
+    set('stops')(form.stops.map((stop, i) => (i === index ? { ...stop, ...patch } : stop)));
   const moveStop = (index: number, by: -1 | 1) => {
     const stops = [...form.stops];
     const [moved] = stops.splice(index, 1);
@@ -124,50 +129,57 @@ export function TripFormWizard({
             hint="Plan, pace, what to bring. Everyone pays their own way."
             error={fieldError('description')}
           />
+          {features.coverUploads ? (
+            <CoverField
+              previewUri={form.coverPreview}
+              onUploaded={(coverImageId, coverPreview) =>
+                setForm({ ...form, coverImageId, coverPreview })
+              }
+              onRemove={() => setForm({ ...form, coverImageId: null, coverPreview: null })}
+            />
+          ) : null}
+          {fieldError('coverImageId') ? (
+            <FormMessage tone="error">{fieldError('coverImageId')}</FormMessage>
+          ) : null}
         </>
       ) : null}
 
       {step === 1 ? (
         <>
-          <TextField
+          <PlaceField
             label="Meeting point"
-            value={form.originName}
-            onChangeText={set('originName')}
-            error={fieldError('originName')}
-          />
-          <TextField
-            label="Meeting point coordinates"
-            value={form.originCoords}
-            onChangeText={set('originCoords')}
-            placeholder="13.0358, 77.5970"
+            name={form.originName}
+            coords={form.originCoords}
+            onChange={({ name, coords }) =>
+              setForm({ ...form, originName: name, originCoords: coords })
+            }
+            searchEnabled={features.placeSearch}
             hint="Only people on the trip see the exact point."
-            error={fieldError('originCoords')}
+            nameError={fieldError('originName')}
+            coordsError={fieldError('originCoords')}
           />
-          <TextField
+          <PlaceField
             label="Destination"
-            value={form.destinationName}
-            onChangeText={set('destinationName')}
-            error={fieldError('destinationName')}
+            name={form.destinationName}
+            coords={form.destinationCoords}
+            onChange={({ name, coords }) =>
+              setForm({ ...form, destinationName: name, destinationCoords: coords })
+            }
+            searchEnabled={features.placeSearch}
+            nameError={fieldError('destinationName')}
+            coordsError={fieldError('destinationCoords')}
           />
-          <TextField
-            label="Destination coordinates"
-            value={form.destinationCoords}
-            onChangeText={set('destinationCoords')}
-            placeholder="13.3702, 77.6835"
-            error={fieldError('destinationCoords')}
-          />
-          <TextField
+          <DateTimeField
             label="Departure"
             value={form.departure}
-            onChangeText={set('departure')}
-            placeholder="YYYY-MM-DD HH:MM"
+            onChange={set('departure')}
             error={fieldError('departure')}
           />
-          <TextField
-            label="Return (optional)"
+          <DateTimeField
+            label="Return"
+            optional
             value={form.returnAt}
-            onChangeText={set('returnAt')}
-            placeholder="YYYY-MM-DD HH:MM"
+            onChange={set('returnAt')}
             error={fieldError('returnAt')}
           />
           <Text style={[styles.section, { color: colors.text }]}>Stops along the way</Text>
@@ -176,24 +188,20 @@ export function TripFormWizard({
               key={index}
               style={[styles.card, { borderColor: colors.border, backgroundColor: colors.surface }]}
             >
-              <TextField
-                label={`Stop ${index + 1} name`}
-                value={stop.name}
-                onChangeText={(value) => updateStop(index, 'name', value)}
-                error={fieldError(`stops.${index}.name`)}
+              <PlaceField
+                label={`Stop ${index + 1}`}
+                name={stop.name}
+                coords={stop.coords}
+                onChange={(place) => updateStop(index, place)}
+                searchEnabled={features.placeSearch}
+                nameError={fieldError(`stops.${index}.name`)}
+                coordsError={fieldError(`stops.${index}.coords`)}
               />
-              <TextField
-                label={`Stop ${index + 1} coordinates`}
-                value={stop.coords}
-                onChangeText={(value) => updateStop(index, 'coords', value)}
-                placeholder="13.2437, 77.7172"
-                error={fieldError(`stops.${index}.coords`)}
-              />
-              <TextField
-                label={`Stop ${index + 1} arrival (optional)`}
+              <DateTimeField
+                label={`Stop ${index + 1} arrival`}
+                optional
                 value={stop.arrival}
-                onChangeText={(value) => updateStop(index, 'arrival', value)}
-                placeholder="YYYY-MM-DD HH:MM"
+                onChange={(arrival) => updateStop(index, { arrival })}
                 error={fieldError(`stops.${index}.arrival`)}
               />
               <View style={styles.row}>
@@ -337,6 +345,13 @@ function Preview({ form, note }: { form: TripForm; note: string }) {
     ) : null;
   return (
     <View style={[styles.card, { borderColor: colors.border, backgroundColor: colors.surface }]}>
+      {form.coverPreview ? (
+        <Image
+          source={{ uri: form.coverPreview }}
+          style={styles.cover}
+          accessibilityLabel="Cover photo"
+        />
+      ) : null}
       <Text style={[styles.title, { color: colors.text }]}>{trip.title}</Text>
       {line('Mode', trip.mode === 'RIDE' ? 'Ride' : 'Travel')}
       {line('From', trip.origin.name)}
@@ -368,4 +383,5 @@ const styles = StyleSheet.create({
   body: { ...typography.body },
   bold: { fontWeight: '600' },
   caption: { ...typography.caption },
+  cover: { width: '100%', aspectRatio: 1200 / 630, borderRadius: radius.md },
 });

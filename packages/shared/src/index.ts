@@ -8,3 +8,4 @@ export * from './trip-mode.js';
 export * from './auth.js';
 export * from './users.js';
 export * from './trips.js';
+export * from './maps-media.js';

@@ -98,18 +98,45 @@ engine size applies to rides only; up to 25 stops with valid coordinates and arr
 departure. Rule failures return 400 with `details`.
 
 **Locking:** mode and activity are fixed once published. Once a trip has started (status or
-departure time), only `description` can change; finished trips cannot change at all.
+departure time), only `description` and `coverImageId` can change; finished trips cannot change at
+all.
 
 **Access:** drafts are visible only to their organiser; `PRIVATE` trips only to participants;
 blocked users in either direction get 404; moderators and admins see everything. The exact meeting
 point goes to participants only; others get `origin.approximate: true` with the point rounded to
-about 1 km. Distance and duration are the organiser's estimates (`estimatesSource: "ORGANISER"`);
-Voyago does not compute routes yet. The budget is a per-person cost-sharing estimate in paise,
-never a price.
+about 1 km. `estimatedDistanceKm` / `estimatedDurationMinutes` are always the organiser's own
+(`estimatesSource: "ORGANISER"`). `route` is the road distance and duration from the Google Routes
+API (`source: "GOOGLE"`, `travelMode` `TWO_WHEELER` for rides, `DRIVE` for travel), computed
+through origin, stops and destination when the trip is created, its route changes, or it is
+published; it is `null` when Google is not configured or returned no route, and Voyago never
+invents one. The budget is a per-person cost-sharing estimate in paise, never a price.
+
+**Cover image:** `coverImageId` on create/update is an id returned by
+`POST /uploads/cover-signature` after the app uploaded the photo to Cloudinary (`null` removes the
+cover). The API accepts only ids in the caller's own upload folder and checks with Cloudinary that
+the image exists and is under 8 MB; anything else is 400, and 503 when uploads are not configured.
+Trips return `coverImageUrl`, a resized Cloudinary delivery URL.
 
 **Free vs commercial:** these endpoints only create `COMMUNITY_FREE` trips; `tripType`, `status`
 and `organiserId` in a request are ignored. `COMMERCIAL_PAID` departures cannot be edited or
 cancelled here (409); they are managed from their package (milestone 12).
+
+### Maps and media
+
+Optional integrations. Each is off until its server credentials are set, and then returns 503
+instead of pretending to work. Keys never reach the apps.
+
+| Method | Path                       | Auth   | Success | Description                                                                  |
+| ------ | -------------------------- | ------ | ------- | ---------------------------------------------------------------------------- |
+| GET    | `/features`                | Bearer | 200     | `{ placeSearch, routing, coverUploads }`: which integrations are configured. |
+| GET    | `/places/autocomplete`     | Bearer | 200     | `q` (2–120 chars), `sessionToken`. Google place suggestions, India only.     |
+| GET    | `/places/:placeId`         | Bearer | 200     | `sessionToken`. Name, address and point of a suggestion.                     |
+| POST   | `/uploads/cover-signature` | Bearer | 200     | Signed fields for one direct upload of a trip cover to Cloudinary.           |
+
+Place search is limited to 60 requests per minute per client and biased to Bengaluru. Results are
+Google's and the app shows "Results from Google". The upload signature fixes the folder, a random
+public id, allowed formats (JPG, PNG, WebP) and strips metadata; the app posts the file straight to
+`uploadUrl`, so photos never pass through the API.
 
 ## Success responses
 

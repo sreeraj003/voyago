@@ -25,6 +25,8 @@ import { type z } from 'zod';
 import { type AuthUser } from '../common/auth/current-user.decorator.js';
 import { decodeCursor, toPage } from '../common/pagination/cursor.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { CloudinaryService } from '../integrations/cloudinary.service.js';
+import { GoogleMapsService } from '../integrations/google-maps.service.js';
 import { geographyPoint, setPointSql } from '../database/geo.js';
 import { Prisma } from '../generated/prisma/client.js';
 import {
@@ -47,7 +49,9 @@ const tripInclude = {
 } as const;
 
 /** Fields that may still change once a trip has started. */
-const EDITABLE_AFTER_START = new Set(['description']);
+const EDITABLE_AFTER_START = new Set(['description', 'coverImageId']);
+/** Edits to these fields recompute the road route. */
+const ROUTE_FIELDS = ['origin', 'destination', 'stops', 'mode'] as const;
 /** Fields fixed once a trip is published: people joined a ride or a trek, not a later swap. */
 const LOCKED_AFTER_PUBLISH = ['mode', 'activityType'] as const;
 
@@ -58,10 +62,16 @@ const LOCKED_AFTER_PUBLISH = ['mode', 'activityType'] as const;
  */
 @Injectable()
 export class TripsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly maps: GoogleMapsService,
+    private readonly cloudinary: CloudinaryService,
+  ) {}
 
   async create(user: AuthUser, input: CreateInput): Promise<Trip> {
     assertNoIssues([departureIssue(input.departureAt)]);
+    if (input.coverImageId)
+      await this.cloudinary.assertOwnUploadedCover(user.id, input.coverImageId);
     const id = await this.prisma.$transaction(async (tx) => {
       const trip = await tx.trip.create({
         data: {
@@ -86,6 +96,7 @@ export class TripsService {
           minEngineCc: input.minEngineCc ?? null,
           visibility: input.visibility ?? 'PUBLIC',
           approvalRequired: input.approvalRequired ?? true,
+          coverImageKey: input.coverImageId ?? null,
           // The organiser is the first participant.
           participants: { create: { userId: user.id, role: 'ORGANISER' } },
         },
@@ -96,13 +107,20 @@ export class TripsService {
       await replaceStops(tx, trip.id, input.stops ?? []);
       return trip.id;
     });
+    await this.refreshRoute(id);
     return this.get(user, id);
   }
 
   async get(user: AuthUser, id: string): Promise<Trip> {
     const { trip, viewer, participantCount } = await this.loadVisible(user, id);
     const [geo] = await this.loadGeo([trip.id]);
-    return toTripView(trip, geo ?? emptyGeo, viewer, participantCount);
+    return toTripView(
+      trip,
+      geo ?? emptyGeo,
+      viewer,
+      participantCount,
+      this.cloudinary.coverUrl(trip.coverImageKey),
+    );
   }
 
   async update(user: AuthUser, id: string, input: UpdateInput): Promise<Trip> {
@@ -153,9 +171,11 @@ export class TripsService {
       }),
     );
     assertNoIssues(issues);
+    if (input.coverImageId)
+      await this.cloudinary.assertOwnUploadedCover(user.id, input.coverImageId);
 
     await this.prisma.$transaction(async (tx) => {
-      const { origin, destination, stops, departureAt, returnAt, ...scalars } = input;
+      const { origin, destination, stops, departureAt, returnAt, coverImageId, ...scalars } = input;
       const updated = await tx.trip.updateMany({
         // Guard against a concurrent status change between the read above and this write.
         where: { id, status: trip.status, deletedAt: null },
@@ -165,6 +185,7 @@ export class TripsService {
           ...(returnAt !== undefined ? { returnAt: returnAt ? new Date(returnAt) : null } : {}),
           ...(origin ? { originName: origin.name } : {}),
           ...(destination ? { destinationName: destination.name } : {}),
+          ...(coverImageId !== undefined ? { coverImageKey: coverImageId } : {}),
         },
       });
       if (updated.count !== 1) throw staleError();
@@ -175,6 +196,7 @@ export class TripsService {
       if (stops) await replaceStops(tx, id, stops);
       await syncCapacityStatus(tx, id);
     });
+    if (ROUTE_FIELDS.some((key) => input[key] !== undefined)) await this.refreshRoute(id);
     return this.get(user, id);
   }
 
@@ -192,6 +214,7 @@ export class TripsService {
       await transition(tx, trip, 'PUBLISHED', { publishedAt: new Date() });
       await syncCapacityStatus(tx, id);
     });
+    if (trip.routeComputedAt === null) await this.refreshRoute(id);
     return this.get(user, id);
   }
 
@@ -304,6 +327,39 @@ export class TripsService {
       ),
       page: page.page,
     };
+  }
+
+  /**
+   * Recomputes the road route (origin → stops → destination) with Google Routes. Best effort:
+   * if routing is off or fails, the stored route is cleared rather than left stale.
+   */
+  private async refreshRoute(id: string): Promise<void> {
+    const trip = await this.prisma.trip.findUniqueOrThrow({
+      where: { id },
+      select: { mode: true },
+    });
+    const [geo] = await this.loadGeo([id]);
+    const points =
+      geo?.origin && geo.destination
+        ? [geo.origin, ...geo.stops.map((stop) => stop.point), geo.destination]
+        : [];
+    const route = await this.maps.computeRoute(points, trip.mode);
+    await this.prisma.trip.update({
+      where: { id },
+      data: route
+        ? {
+            routeDistanceMeters: route.distanceMeters,
+            routeDurationSeconds: route.durationSeconds,
+            routeTravelMode: route.travelMode,
+            routeComputedAt: new Date(),
+          }
+        : {
+            routeDistanceMeters: null,
+            routeDurationSeconds: null,
+            routeTravelMode: null,
+            routeComputedAt: null,
+          },
+    });
   }
 
   // ── Loading and access ────────────────────────────────────────────────────

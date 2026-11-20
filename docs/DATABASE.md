@@ -253,3 +253,12 @@ fixed id beginning `5eed0000`, so re-running changes nothing. The `dev_*` accoun
   trips have `started_at`, title not blank, duration range.
 - Route data (`trips.origin/destination`, `trip_stops`) is planning data only. Live location is a
   separate store (Redis, milestone 11) and never written to these tables.
+
+## Milestone 05 follow-up (`20261120093000_trip_route_and_cover`)
+
+- `trips`: added `route_distance_meters`, `route_duration_seconds`, `route_travel_mode`
+  (`TWO_WHEELER` or `DRIVE`) and `route_computed_at`, written only from a Google Routes response.
+  `trips_route_complete` requires all four or none; `trips_route_values` checks ranges and mode.
+- `trips.cover_image_key` holds a Cloudinary public id
+  (`<folder>/trip-covers/<user id>/<uuid>`), enforced by `trips_cover_image_key_format`. The URL
+  is built when the trip is read, so changing the delivery transformation needs no data change.
