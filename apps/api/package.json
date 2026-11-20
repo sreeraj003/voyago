@@ -9,13 +9,15 @@
     "dev": "nest start --watch",
     "start": "node dist/main.js",
     "typecheck": "pnpm prisma:generate && tsc -p tsconfig.json --noEmit",
-    "lint": "pnpm prisma:generate && eslint src test",
+    "lint": "pnpm prisma:generate && eslint src test prisma scripts",
     "test": "pnpm prisma:generate && vitest run",
     "test:e2e": "pnpm prisma:generate && vitest run --config ./vitest.config.e2e.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "db:seed": "prisma db seed",
+    "db:reset": "node scripts/assert-dev-database.mjs && prisma migrate reset --force && prisma db seed"
   },
   "dependencies": {
     "@nestjs/common": "12.5.1",
@@ -46,6 +48,7 @@
     "pino-pretty": "13.2.0",
     "prisma": "7.10.1",
     "supertest": "7.3.2",
+    "tsx": "4.23.15",
     "typescript": "6.0.3",
     "vite": "8.3.8",
     "vitest": "5.1.1"

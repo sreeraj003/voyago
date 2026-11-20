@@ -43,6 +43,7 @@ cp apps/mobile/.env.example apps/mobile/.env
 # Start PostgreSQL/PostGIS and Redis, then apply migrations
 pnpm services:up
 pnpm db:migrate
+pnpm db:seed        # optional: development-only sample data
 ```
 
 Change `POSTGRES_PASSWORD` in `infra/docker/.env` and the matching password in
@@ -69,19 +70,29 @@ pnpm format:check   # Prettier
 pnpm typecheck      # tsc --noEmit, strict, all packages
 pnpm lint           # ESLint
 pnpm test           # unit tests (API, admin, mobile, shared)
-pnpm --filter @voyago/api test:e2e   # API smoke test against the Docker services
+pnpm --filter @voyago/api test:e2e   # API smoke + database constraint tests (Docker services)
 pnpm check          # format + typecheck + lint + unit tests
 ```
 
 CI (`.github/workflows/ci.yml`) runs all of these on every push to `main` and on pull requests,
 with real PostgreSQL/PostGIS and Redis service containers.
 
+## Database
+
+See [docs/DATABASE.md](docs/DATABASE.md) for the schema, ER diagram and constraint rationale.
+
+```bash
+pnpm db:migrate     # apply pending migrations
+pnpm db:seed        # load development-only sample data (idempotent; refuses production)
+pnpm db:reset       # DEV ONLY: drop the local database, re-apply migrations, re-seed
+pnpm --filter @voyago/api prisma:migrate:dev -- --name <change>   # create a migration from schema changes
+pnpm --filter @voyago/api prisma:studio     # browse the database
+```
+
 ## Useful commands
 
 ```bash
 pnpm services:down                          # stop Docker services (data is kept in volumes)
-pnpm --filter @voyago/api prisma:migrate:dev -- --name <change>   # create a migration
-pnpm --filter @voyago/api prisma:studio     # browse the database
 pnpm --filter @voyago/mobile doctor         # check Expo package versions
 ```
 

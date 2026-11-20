@@ -66,5 +66,8 @@ jobs:
       - name: Apply migrations
         run: pnpm db:migrate
 
-      - name: API smoke test (real Postgres/PostGIS + Redis)
+      - name: Seed development data (twice, to prove it is idempotent)
+        run: pnpm db:seed && pnpm db:seed
+
+      - name: API smoke and database constraint tests (real Postgres/PostGIS + Redis)
         run: pnpm --filter @voyago/api test:e2e

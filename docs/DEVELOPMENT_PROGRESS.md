@@ -24,6 +24,55 @@ verified before the next starts.
 
 ---
 
+## Milestone 02: Database design and migrations (2026-11-20)
+
+### Implemented
+
+- Prisma schema for all 24 entities in the spec, plus `user_blocks` (free core safety feature):
+  users, preferences, motorcycles, trips, stops, participants, join requests, communities,
+  members, follows, conversations, members, messages, notifications, reviews, reports, commercial
+  operators and packages, bookings, payments, subscription plans, subscriptions, location sessions,
+  audit logs. 37 Postgres enums for lifecycle states.
+- PostGIS `geography(Point, 4326)` columns for trip origin/destination, stops and package
+  destinations, with GiST indexes, plus parameterised SQL helpers (`src/infra/prisma/geo.ts`).
+- Hand-written CHECK constraints, partial unique indexes and triggers for rules Prisma cannot express,
+  including the separation of free community trips from commercial bookings, verified-operator
+  publishing, 24-hour live location limit, money sanity and an append-only audit log.
+- Idempotent, development-only seed (`prisma/seed.ts`) that refuses production and remote databases.
+- `docs/DATABASE.md`: ER diagram, conventions, constraint, delete-behaviour and index rationale,
+  deferred entities. README gained `db:seed` and `db:reset`.
+
+### Database changes
+
+- Migration `20261120070747_initial_schema`: enables `citext`; creates 24 tables, enums, indexes,
+  constraints and triggers. Verified with `prisma migrate diff`: no drift between schema and database.
+
+### APIs
+
+None (this milestone is schema only). `GET /api/v1/health` unchanged.
+
+### Commands run and results
+
+| Command                                                    | Result                                                                                                                                                                                                                                            |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm db:migrate` on a clean database                      | Both migrations applied                                                                                                                                                                                                                           |
+| `prisma migrate diff --from-config-datasource --to-schema` | Empty: no drift                                                                                                                                                                                                                                   |
+| `pnpm db:seed` twice                                       | Succeeded; second run changed nothing                                                                                                                                                                                                             |
+| `NODE_ENV=production pnpm db:seed` / remote `DATABASE_URL` | Refused, as intended                                                                                                                                                                                                                              |
+| `pnpm db:reset`                                            | Not run by the agent: Prisma blocks AI agents from resetting databases without explicit user consent. The production guard was verified (`NODE_ENV=production` refused); clean-database migration was verified with fresh Docker volumes instead. |
+| `pnpm format:check`, `pnpm typecheck`, `pnpm lint`         | Passed                                                                                                                                                                                                                                            |
+| `pnpm test`                                                | Unit tests passed (API 16, admin 6, mobile 5, shared 3)                                                                                                                                                                                           |
+| `pnpm --filter @voyago/api test:e2e`                       | 31 passed: 27 database constraint/PostGIS tests + 4 API smoke tests                                                                                                                                                                               |
+
+### Outstanding
+
+- Text search indexes (`pg_trgm`) are deferred to milestone 06; auth session tables to milestone 04.
+  Full list in `docs/DATABASE.md` → Deferred.
+- Money columns are `int4` paise (max about ₹2.1 crore per row). Switch to `bigint` if a single
+  booking could ever exceed that.
+
+---
+
 ## Milestone 01: Project foundation and architecture (2026-11-20)
 
 ### Implemented

@@ -19,7 +19,9 @@
     "check": "pnpm format:check && pnpm typecheck && pnpm lint && pnpm test",
     "services:up": "docker compose -f infra/docker/docker-compose.yml --env-file infra/docker/.env up -d --wait",
     "services:down": "docker compose -f infra/docker/docker-compose.yml --env-file infra/docker/.env down",
-    "db:migrate": "pnpm --filter @voyago/api prisma:migrate:deploy"
+    "db:migrate": "pnpm --filter @voyago/api prisma:migrate:deploy",
+    "db:seed": "pnpm --filter @voyago/api db:seed",
+    "db:reset": "pnpm --filter @voyago/api db:reset"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
