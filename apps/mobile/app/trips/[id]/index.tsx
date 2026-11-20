@@ -3,6 +3,7 @@ import { type Trip } from '@voyago/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Image, Linking, StyleSheet, Text, View } from 'react-native';
+import { askToJoin, leaveTrip, withdrawRequest } from '../../../src/api/participation';
 import { cancelTrip, deleteTrip, getTrip, tripAction } from '../../../src/api/trips';
 import { useFormError } from '../../../src/auth/use-form-error';
 import { Button, FormMessage, TextField } from '../../../src/components/Form';
@@ -93,8 +94,139 @@ function TripDetail({ trip }: { trip: Trip }) {
         ) : null}
         {line('Cancelled because', trip.cancellationReason)}
       </View>
+      <Membership trip={trip} />
       <TripActions trip={trip} />
     </>
+  );
+}
+
+/** Joining, leaving, and links to requests and people, depending on who is looking. */
+function Membership({ trip }: { trip: Trip }) {
+  const { colors } = useTheme();
+  const queryClient = useQueryClient();
+  const error = useFormError();
+  const [message, setMessage] = useState('');
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  const { viewer } = trip;
+  const actions = new Set(viewer.actions);
+  const request = viewer.joinRequest;
+
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: ['trip', trip.id] });
+    void queryClient.invalidateQueries({ queryKey: ['my-trips'] });
+    void queryClient.invalidateQueries({ queryKey: ['discovery'] });
+  };
+  const join = useMutation({
+    mutationFn: () => askToJoin(trip.id, message),
+    onMutate: () => error.clear(),
+    onSuccess: () => {
+      setMessage('');
+      refresh();
+    },
+    onError: (caught) => error.capture(caught),
+  });
+  const withdraw = useMutation({
+    mutationFn: (id: string) => withdrawRequest(id),
+    onMutate: () => error.clear(),
+    onSuccess: refresh,
+    onError: (caught) => error.capture(caught),
+  });
+  const leave = useMutation({
+    mutationFn: () => leaveTrip(trip.id),
+    onMutate: () => error.clear(),
+    onSuccess: () => {
+      setConfirmLeave(false);
+      refresh();
+    },
+    onError: (caught) => error.capture(caught),
+  });
+
+  const canSeePeople = viewer.isOrganiser || viewer.isParticipant;
+  return (
+    <View style={styles.actions}>
+      {error.message ? <FormMessage tone="error">{error.message}</FormMessage> : null}
+      {viewer.isOrganiser && trip.approvalRequired && trip.status !== 'DRAFT' ? (
+        <Button
+          title={
+            viewer.pendingRequestCount > 0
+              ? `Join requests (${viewer.pendingRequestCount})`
+              : 'Join requests'
+          }
+          variant={viewer.pendingRequestCount > 0 ? 'primary' : 'secondary'}
+          onPress={() => router.push(`/trips/${trip.id}/requests`)}
+        />
+      ) : null}
+      {canSeePeople && trip.status !== 'DRAFT' ? (
+        <Button
+          title={`People on this trip (${trip.participantCount})`}
+          variant="secondary"
+          onPress={() => router.push(`/trips/${trip.id}/people`)}
+        />
+      ) : null}
+
+      {request?.status === 'PENDING' ? (
+        <>
+          <FormMessage tone="info">
+            Request sent. The organiser will approve or decline it.
+          </FormMessage>
+          <Button
+            title="Withdraw request"
+            variant="secondary"
+            loading={withdraw.isPending}
+            onPress={() => withdraw.mutate(request.id)}
+          />
+        </>
+      ) : null}
+      {viewer.participantStatus === 'REMOVED' ? (
+        <FormMessage tone="info">The organiser removed you from this trip.</FormMessage>
+      ) : null}
+      {request?.status === 'REJECTED' && actions.has('join') ? (
+        <FormMessage tone="info">The organiser declined your last request.</FormMessage>
+      ) : null}
+      {trip.status === 'FULL' && !viewer.isParticipant && !viewer.isOrganiser ? (
+        <FormMessage tone="info">This trip is full.</FormMessage>
+      ) : null}
+
+      {actions.has('join') ? (
+        <>
+          {trip.approvalRequired ? (
+            <TextField
+              label="Note to the organiser (optional)"
+              value={message}
+              onChangeText={setMessage}
+              multiline
+              maxLength={500}
+              hint="For example your riding experience or what you ride."
+              error={error.fields.message}
+            />
+          ) : null}
+          <Button
+            title={trip.approvalRequired ? 'Ask to join' : 'Join trip'}
+            loading={join.isPending}
+            onPress={() => join.mutate()}
+          />
+          <Text style={[styles.caption, { color: colors.textMuted }]}>
+            Free to join. Everyone shares their own costs.
+          </Text>
+        </>
+      ) : null}
+
+      {actions.has('leave') && !confirmLeave ? (
+        <Button title="Leave trip" variant="link" onPress={() => setConfirmLeave(true)} />
+      ) : null}
+      {confirmLeave ? (
+        <>
+          <FormMessage tone="info">Leave this trip? Your place goes to someone else.</FormMessage>
+          <Button
+            title="Yes, leave"
+            variant="secondary"
+            loading={leave.isPending}
+            onPress={() => leave.mutate()}
+          />
+          <Button title="Stay" variant="link" onPress={() => setConfirmLeave(false)} />
+        </>
+      ) : null}
+    </View>
   );
 }
 
@@ -133,6 +265,8 @@ function TripActions({ trip }: { trip: Trip }) {
     onError: (caught) => error.capture(caught),
   });
 
+  actions.delete('join');
+  actions.delete('leave');
   if (actions.size === 0) return null;
   return (
     <View style={styles.actions}>

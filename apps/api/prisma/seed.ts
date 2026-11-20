@@ -53,6 +53,7 @@ const TRIPS = {
 const OPERATOR = id(300);
 const PACKAGE = id(301);
 const CONVERSATION = id(400);
+const JOIN_REQUEST = id(600);
 const PLANS = { explorer: id(500), organiser: id(501) } as const;
 
 const PLACES: Record<string, GeoPoint> = {
@@ -325,8 +326,9 @@ async function main(): Promise<void> {
         update: {},
       });
       await tx.tripJoinRequest.upsert({
-        where: { tripId_userId: { tripId: TRIPS.coorg, userId: USERS.vikram } },
+        where: { id: JOIN_REQUEST },
         create: {
+          id: JOIN_REQUEST,
           tripId: TRIPS.coorg,
           userId: USERS.vikram,
           message: 'Sample join request: happy to share driving.',

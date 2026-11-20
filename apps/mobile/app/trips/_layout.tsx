@@ -17,6 +17,8 @@ export default function TripsLayout() {
       <Stack.Screen name="new" options={{ title: 'New trip' }} />
       <Stack.Screen name="[id]/index" options={{ title: 'Trip' }} />
       <Stack.Screen name="[id]/edit" options={{ title: 'Edit trip' }} />
+      <Stack.Screen name="[id]/requests" options={{ title: 'Join requests' }} />
+      <Stack.Screen name="[id]/people" options={{ title: 'People on this trip' }} />
     </Stack>
   );
 }

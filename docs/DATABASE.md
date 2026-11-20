@@ -254,6 +254,22 @@ fixed id beginning `5eed0000`, so re-running changes nothing. The `dev_*` accoun
 - Route data (`trips.origin/destination`, `trip_stops`) is planning data only. Live location is a
   separate store (Redis, milestone 11) and never written to these tables.
 
+## Milestone 07 changes (`20261120120000_participation`)
+
+- `JoinRequestStatus` value `EXPIRED` renamed `CANCELLED` (never used); `ParticipantStatus` gains
+  `COMPLETED`; `NotificationType` gains `PARTICIPANT_REMOVED` and `TRIP_REMINDER`.
+- `trip_join_requests`: the unique `(trip_id, user_id)` is replaced by the partial unique index
+  `trip_join_requests_one_pending` (one `PENDING` row per member and trip), so request history is
+  kept. CHECK `trip_join_requests_decided_when_closed`: `decided_at` is set exactly when the
+  request is no longer pending.
+- `trip_participants`: `removed_by_id` (FK, set null) and `removal_reason`; CHECKs that `LEFT` /
+  `REMOVED` rows have `left_at` and that only removed rows carry a reason. Rejoining after leaving
+  reuses the row.
+- `trips.reminder_sent_at`: claimed with a conditional update so the reminder goes out once.
+- Triggers: `trip_participants_capacity` locks the trip row and rejects a new `ACTIVE`
+  participant beyond `max_participants`; `trips_capacity_floor` rejects lowering
+  `max_participants` below the active count. Both raise SQLSTATE 23514.
+
 ## Milestone 06 changes (`20261120110000_discovery`)
 
 - Extension `pg_trgm`.

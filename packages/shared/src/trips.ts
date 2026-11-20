@@ -207,6 +207,9 @@ export const TripActionSchema = z.enum([
   'complete',
   'cancel',
   'delete',
+  /** Ask to join (or join at once when the trip doesn't need approval). */
+  'join',
+  'leave',
 ]);
 export type TripAction = z.infer<typeof TripActionSchema>;
 
@@ -276,6 +279,17 @@ export const TripSchema = z.object({
   viewer: z.object({
     isOrganiser: z.boolean(),
     isParticipant: z.boolean(),
+    /** ACTIVE / COMPLETED while on the trip; LEFT or REMOVED afterwards; null if never. */
+    participantStatus: z.enum(['ACTIVE', 'COMPLETED', 'LEFT', 'REMOVED']).nullable(),
+    /** The member's latest join request for this trip, if any. */
+    joinRequest: z
+      .object({
+        id: z.uuid(),
+        status: z.enum(['PENDING', 'APPROVED', 'REJECTED', 'WITHDRAWN', 'CANCELLED']),
+      })
+      .nullable(),
+    /** Pending requests waiting for the organiser (organiser and staff only, else 0). */
+    pendingRequestCount: z.number().int(),
     /** What the signed-in member may do now. The API checks again on every action. */
     actions: z.array(TripActionSchema),
   }),

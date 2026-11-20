@@ -10,3 +10,4 @@ export * from './users.js';
 export * from './trips.js';
 export * from './maps-media.js';
 export * from './discovery.js';
+export * from './participation.js';

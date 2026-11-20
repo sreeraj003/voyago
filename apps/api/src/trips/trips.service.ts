@@ -12,6 +12,7 @@ import {
   type GeoPoint,
   type MyTripsQuerySchema,
   type PageResponse,
+  type ParticipantStatus,
   type RuleIssue,
   TERMINAL_TRIP_STATUSES,
   type Trip,
@@ -27,6 +28,7 @@ import { decodeCursor, toPage } from '../common/pagination/cursor.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { CloudinaryService } from '../integrations/cloudinary.service.js';
 import { GoogleMapsService } from '../integrations/google-maps.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import { geographyPoint, setPointSql } from '../database/geo.js';
 import { Prisma } from '../generated/prisma/client.js';
 import {
@@ -37,6 +39,7 @@ import {
   type TripGeo,
   type TripRecord,
   toTripView,
+  type ViewerContext,
 } from './trip-view.js';
 
 type CreateInput = z.output<typeof CreateTripSchema>;
@@ -47,6 +50,18 @@ type Tx = Prisma.TransactionClient;
 const tripInclude = {
   organiser: { select: { id: true, username: true, displayName: true } },
 } as const;
+
+/** Participant statuses that count as being on the trip (now, or when it finished). */
+const ON_TRIP: ParticipantStatus[] = ['ACTIVE', 'COMPLETED'];
+/** Edits to these fields are announced to everyone on the trip. */
+const ANNOUNCED_FIELDS = [
+  'departureAt',
+  'returnAt',
+  'origin',
+  'destination',
+  'stops',
+  'title',
+] as const;
 
 /** Fields that may still change once a trip has started. */
 const EDITABLE_AFTER_START = new Set(['description', 'coverImageId']);
@@ -66,6 +81,7 @@ export class TripsService {
     private readonly prisma: PrismaService,
     private readonly maps: GoogleMapsService,
     private readonly cloudinary: CloudinaryService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   async create(user: AuthUser, input: CreateInput): Promise<Trip> {
@@ -199,6 +215,15 @@ export class TripsService {
       await syncCapacityStatus(tx, id);
     });
     if (ROUTE_FIELDS.some((key) => input[key] !== undefined)) await this.refreshRoute(id);
+    const announced = ANNOUNCED_FIELDS.filter((key) => input[key] !== undefined);
+    if (announced.length > 0 && trip.status !== 'DRAFT') {
+      await this.notifications.notify(this.prisma, await this.otherMembers(id, user.id), {
+        type: 'TRIP_UPDATED',
+        title: `${trip.title} was updated`,
+        body: `The organiser changed ${describeChanges(announced)}. Check the latest plan.`,
+        data: { tripId: id },
+      });
+    }
     return this.get(user, id);
   }
 
@@ -226,14 +251,23 @@ export class TripsService {
     if (Date.now() < trip.departureAt.getTime() - TRIP_START_WINDOW_MS) {
       throw new ConflictException('A trip can be started from 2 hours before departure');
     }
-    await transition(this.prisma, trip, 'IN_PROGRESS', { startedAt: new Date() });
+    await this.prisma.$transaction(async (tx) => {
+      await transition(tx, trip, 'IN_PROGRESS', { startedAt: new Date() });
+      await closePendingRequests(tx, id);
+    });
     return this.get(user, id);
   }
 
   async complete(user: AuthUser, id: string): Promise<Trip> {
     const { trip } = await this.loadForOrganiser(user, id);
     this.assertAction(trip, user, 'complete');
-    await transition(this.prisma, trip, 'COMPLETED', { completedAt: new Date() });
+    await this.prisma.$transaction(async (tx) => {
+      await transition(tx, trip, 'COMPLETED', { completedAt: new Date() });
+      await tx.tripParticipant.updateMany({
+        where: { tripId: id, status: 'ACTIVE' },
+        data: { status: 'COMPLETED' },
+      });
+    });
     return this.get(user, id);
   }
 
@@ -251,6 +285,17 @@ export class TripsService {
       await transition(tx, trip, 'CANCELLED', {
         cancelledAt: new Date(),
         cancellationReason: reason,
+      });
+      const requesters = await closePendingRequests(tx, id);
+      const members = await tx.tripParticipant.findMany({
+        where: { tripId: id, status: 'ACTIVE', userId: { not: user.id } },
+        select: { userId: true },
+      });
+      await this.notifications.notify(tx, [...members.map((m) => m.userId), ...requesters], {
+        type: 'TRIP_CANCELLED',
+        title: `${trip.title} was cancelled`,
+        body: `Reason: ${reason}`,
+        data: { tripId: id },
       });
       if (!isOrganiser) {
         await tx.auditLog.create({
@@ -286,7 +331,7 @@ export class TripsService {
   ): Promise<PageResponse<Trip>> {
     const cursor = decodeCursor(query.cursor);
     const asParticipant = {
-      participants: { some: { userId: user.id, status: 'ACTIVE' as const } },
+      participants: { some: { userId: user.id, status: { in: ON_TRIP } } },
     };
     const where: Prisma.TripWhereInput = {
       deletedAt: null,
@@ -317,14 +362,28 @@ export class TripsService {
     });
     const page = toPage(rows, query.limit);
     const ids = page.data.map((trip) => trip.id);
-    const [geos, counts] = await Promise.all([this.loadGeo(ids), this.countParticipants(ids)]);
+    const [geos, counts, mine] = await Promise.all([
+      this.loadGeo(ids),
+      this.countParticipants(ids),
+      this.prisma.tripParticipant.findMany({
+        where: { tripId: { in: ids }, userId: user.id },
+        select: { tripId: true, status: true },
+      }),
+    ]);
+    const statusOf = new Map(mine.map((row) => [row.tripId, row.status]));
     return {
       data: page.data.map((trip, index) =>
         toTripView(
           trip,
           geos[index] ?? emptyGeo,
-          { user, isParticipant: true, blocked: false },
+          {
+            user,
+            isParticipant: true,
+            blocked: false,
+            participantStatus: statusOf.get(trip.id) ?? null,
+          },
           counts.get(trip.id) ?? 0,
+          this.cloudinary.coverUrl(trip.coverImageKey),
         ),
       ),
       page: page.page,
@@ -366,17 +425,19 @@ export class TripsService {
 
   // ── Loading and access ────────────────────────────────────────────────────
 
-  private async loadVisible(user: AuthUser, id: string) {
+  /** The trip if the user may see it (404 otherwise), with what they have to do with it. */
+  async loadVisible(user: AuthUser, id: string) {
     const trip = await this.prisma.trip.findFirst({
       where: { id, deletedAt: null },
       include: tripInclude,
     });
     const notFound = new NotFoundException('Trip not found');
     if (!trip) throw notFound;
-    const [participant, block, counts] = await Promise.all([
-      this.prisma.tripParticipant.findFirst({
-        where: { tripId: id, userId: user.id, status: 'ACTIVE' },
-        select: { id: true },
+    const manages = trip.organiserId === user.id || isStaff(user);
+    const [participant, block, counts, joinRequest, pendingRequestCount] = await Promise.all([
+      this.prisma.tripParticipant.findUnique({
+        where: { tripId_userId: { tripId: id, userId: user.id } },
+        select: { status: true },
       }),
       trip.organiserId === user.id
         ? null
@@ -390,8 +451,21 @@ export class TripsService {
             select: { blockerId: true },
           }),
       this.countParticipants([id]),
+      this.prisma.tripJoinRequest.findFirst({
+        where: { tripId: id, userId: user.id },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true, status: true },
+      }),
+      manages ? this.prisma.tripJoinRequest.count({ where: { tripId: id, status: 'PENDING' } }) : 0,
     ]);
-    const viewer = { user, isParticipant: participant !== null, blocked: block !== null };
+    const viewer: ViewerContext = {
+      user,
+      isParticipant: participant !== null && ON_TRIP.includes(participant.status),
+      blocked: block !== null,
+      participantStatus: participant?.status ?? null,
+      joinRequest,
+      pendingRequestCount,
+    };
     if (!canView(trip, viewer)) throw notFound;
     return { trip: trip as TripRecord, viewer, participantCount: counts.get(id) ?? 0 };
   }
@@ -420,11 +494,20 @@ export class TripsService {
     if (!allowedActions(trip, user).includes(action)) throw invalidTransition(trip.status, action);
   }
 
+  /** Active participants other than `exceptUserId`. */
+  private async otherMembers(tripId: string, exceptUserId: string): Promise<string[]> {
+    const rows = await this.prisma.tripParticipant.findMany({
+      where: { tripId, status: 'ACTIVE', userId: { not: exceptUserId } },
+      select: { userId: true },
+    });
+    return rows.map((row) => row.userId);
+  }
+
   private async countParticipants(ids: string[]): Promise<Map<string, number>> {
     if (ids.length === 0) return new Map();
     const groups = await this.prisma.tripParticipant.groupBy({
       by: ['tripId'],
-      where: { tripId: { in: ids }, status: 'ACTIVE' },
+      where: { tripId: { in: ids }, status: { in: ON_TRIP } },
       _count: { _all: true },
     });
     return new Map(groups.map((group) => [group.tripId, group._count._all]));
@@ -511,7 +594,7 @@ async function transition(
   if (updated.count !== 1) throw staleError();
 }
 
-/** PUBLISHED ⇄ FULL follows capacity. Joining arrives in milestone 07 and calls this too. */
+/** PUBLISHED ⇄ FULL follows capacity: called after every join, leave and removal. */
 export async function syncCapacityStatus(tx: Tx, tripId: string): Promise<void> {
   const trip = await tx.trip.findUniqueOrThrow({
     where: { id: tripId },
@@ -526,6 +609,40 @@ export async function syncCapacityStatus(tx: Tx, tripId: string): Promise<void> 
       data: { status: next },
     });
   }
+}
+
+/**
+ * Closes pending join requests when a trip stops taking people (cancelled, started, expired).
+ * Returns the requesters, so they can be told.
+ */
+export async function closePendingRequests(tx: Tx, tripId: string): Promise<string[]> {
+  const pending = await tx.tripJoinRequest.findMany({
+    where: { tripId, status: 'PENDING' },
+    select: { userId: true },
+  });
+  if (pending.length > 0) {
+    await tx.tripJoinRequest.updateMany({
+      where: { tripId, status: 'PENDING' },
+      data: { status: 'CANCELLED', decidedAt: new Date() },
+    });
+  }
+  return pending.map((row) => row.userId);
+}
+
+const CHANGE_NAMES: Record<(typeof ANNOUNCED_FIELDS)[number], string> = {
+  departureAt: 'the departure time',
+  returnAt: 'the return time',
+  origin: 'the meeting point',
+  destination: 'the destination',
+  stops: 'the stops',
+  title: 'the title',
+};
+
+function describeChanges(fields: readonly (typeof ANNOUNCED_FIELDS)[number][]): string {
+  const names = fields.map((field) => CHANGE_NAMES[field]);
+  return names.length === 1
+    ? (names[0] ?? '')
+    : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`;
 }
 
 function assertNoIssues(issues: (RuleIssue | null)[]): void {

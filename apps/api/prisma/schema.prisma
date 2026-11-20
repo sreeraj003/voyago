@@ -145,6 +145,8 @@ enum ParticipantRole {
 
 enum ParticipantStatus {
   ACTIVE
+  /// The trip finished with this member on it.
+  COMPLETED
   LEFT
   REMOVED
 }
@@ -154,7 +156,8 @@ enum JoinRequestStatus {
   APPROVED
   REJECTED
   WITHDRAWN
-  EXPIRED
+  /// Closed by the system because the trip was cancelled, expired or started.
+  CANCELLED
 }
 
 enum CommunityVisibility {
@@ -207,6 +210,8 @@ enum NotificationType {
   NEW_FOLLOWER
   COMMUNITY_INVITE
   SAFETY_ALERT
+  PARTICIPANT_REMOVED
+  TRIP_REMINDER
   BOOKING_UPDATE
   PAYMENT_UPDATE
   SYSTEM
@@ -335,7 +340,8 @@ model User {
   preferences         UserPreference?
   motorcycles         Motorcycle[]
   organisedTrips      Trip[]               @relation("TripOrganiser")
-  participations      TripParticipant[]
+  participations      TripParticipant[]    @relation("Participant")
+  removedParticipants TripParticipant[]    @relation("ParticipantRemover")
   joinRequests        TripJoinRequest[]    @relation("JoinRequester")
   decidedJoinRequests TripJoinRequest[]    @relation("JoinRequestDecider")
   createdCommunities  Community[]          @relation("CommunityCreator")
@@ -560,6 +566,8 @@ model Trip {
   publishedAt              DateTime?                              @map("published_at") @db.Timestamptz(3)
   startedAt                DateTime?                              @map("started_at") @db.Timestamptz(3)
   completedAt              DateTime?                              @map("completed_at") @db.Timestamptz(3)
+  /// Set when the "trip tomorrow" reminder went out, so it is sent once.
+  reminderSentAt           DateTime?                              @map("reminder_sent_at") @db.Timestamptz(3)
   cancelledAt              DateTime?                              @map("cancelled_at") @db.Timestamptz(3)
   cancellationReason       String?                                @map("cancellation_reason") @db.VarChar(500)
   createdAt                DateTime                               @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -610,17 +618,21 @@ model TripStop {
 }
 
 model TripParticipant {
-  id        String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tripId    String            @map("trip_id") @db.Uuid
-  userId    String            @map("user_id") @db.Uuid
-  role      ParticipantRole   @default(PARTICIPANT)
-  status    ParticipantStatus @default(ACTIVE)
-  joinedAt  DateTime          @default(now()) @map("joined_at") @db.Timestamptz(3)
-  leftAt    DateTime?         @map("left_at") @db.Timestamptz(3)
-  updatedAt DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id            String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tripId        String            @map("trip_id") @db.Uuid
+  userId        String            @map("user_id") @db.Uuid
+  role          ParticipantRole   @default(PARTICIPANT)
+  status        ParticipantStatus @default(ACTIVE)
+  joinedAt      DateTime          @default(now()) @map("joined_at") @db.Timestamptz(3)
+  /// When the member left or was removed.
+  leftAt        DateTime?         @map("left_at") @db.Timestamptz(3)
+  removedById   String?           @map("removed_by_id") @db.Uuid
+  removalReason String?           @map("removal_reason") @db.VarChar(500)
+  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trip      Trip  @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user      User  @relation("Participant", fields: [userId], references: [id], onDelete: Cascade)
+  removedBy User? @relation("ParticipantRemover", fields: [removedById], references: [id], onDelete: SetNull)
 
   @@unique([tripId, userId])
   @@index([userId, status])
@@ -644,7 +656,7 @@ model TripJoinRequest {
   user      User  @relation("JoinRequester", fields: [userId], references: [id], onDelete: Cascade)
   decidedBy User? @relation("JoinRequestDecider", fields: [decidedById], references: [id], onDelete: SetNull)
 
-  @@unique([tripId, userId])
+  // At most one PENDING request per member and trip: partial unique index in the migration.
   @@index([tripId, status])
   @@index([userId, status])
   @@map("trip_join_requests")

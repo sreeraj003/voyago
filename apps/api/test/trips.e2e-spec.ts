@@ -178,7 +178,14 @@ describe('trips (e2e)', () => {
         point: { latitude: 13.04, longitude: 77.6 },
         approximate: true,
       });
-      expect(seen.viewer).toEqual({ isOrganiser: false, isParticipant: false, actions: [] });
+      expect(seen.viewer).toEqual({
+        isOrganiser: false,
+        isParticipant: false,
+        participantStatus: null,
+        joinRequest: null,
+        pendingRequestCount: 0,
+        actions: ['join'],
+      });
 
       const privateTrip = await create(alice, rideBody({ visibility: 'PRIVATE' }));
       await action(alice, privateTrip.id, 'publish').expect(200);

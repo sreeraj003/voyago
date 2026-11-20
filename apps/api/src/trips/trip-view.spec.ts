@@ -58,9 +58,26 @@ describe('allowedActions', () => {
     expect(allowedActions(trip({ status: 'CANCELLED' }), organiser)).toEqual([]);
   });
 
-  it('gives members nothing, moderators only cancel, and commercial trips nothing', () => {
-    expect(allowedActions(trip(), member)).toEqual([]);
-    expect(allowedActions(trip(), moderator)).toEqual(['cancel']);
+  it('lets members join open trips and leave ones they are on', () => {
+    const none = { participantStatus: null, hasPendingRequest: false };
+    expect(allowedActions(trip(), member)).toEqual(['join']);
+    expect(allowedActions(trip(), member, { ...none, hasPendingRequest: true })).toEqual([]);
+    expect(allowedActions(trip(), member, { ...none, participantStatus: 'ACTIVE' })).toEqual([
+      'leave',
+    ]);
+    expect(allowedActions(trip(), member, { ...none, participantStatus: 'LEFT' })).toEqual([
+      'join',
+    ]);
+    expect(allowedActions(trip(), member, { ...none, participantStatus: 'REMOVED' })).toEqual([]);
+    for (const status of ['FULL', 'IN_PROGRESS', 'CANCELLED', 'EXPIRED', 'COMPLETED'] as const) {
+      expect(allowedActions(trip({ status }), member)).not.toContain('join');
+    }
+    expect(allowedActions(trip({ departureAt: new Date(Date.now() - HOUR) }), member)).toEqual([]);
+  });
+
+  it('gives moderators cancel, and commercial trips nothing', () => {
+    expect(allowedActions(trip(), moderator)).toEqual(['cancel', 'join']);
     expect(allowedActions(trip({ tripType: 'COMMERCIAL_PAID' }), organiser)).toEqual([]);
+    expect(allowedActions(trip({ tripType: 'COMMERCIAL_PAID' }), member)).toEqual([]);
   });
 });

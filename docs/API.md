@@ -117,9 +117,62 @@ cover). The API accepts only ids in the caller's own upload folder and checks wi
 the image exists and is under 8 MB; anything else is 400, and 503 when uploads are not configured.
 Trips return `coverImageUrl`, a resized Cloudinary delivery URL.
 
+**Membership changes:** starting a trip closes its pending requests; completing it marks active
+participants `COMPLETED`; cancelling closes pending requests and notifies everyone involved.
+
 **Free vs commercial:** these endpoints only create `COMMUNITY_FREE` trips; `tripType`, `status`
 and `organiserId` in a request are ignored. `COMMERCIAL_PAID` departures cannot be edited or
 cancelled here (409); they are managed from their package (milestone 12).
+
+### Joining and participants
+
+Joining a community trip is free. These routes never touch commercial bookings (409 for
+commercial departures).
+
+| Method | Path                                     | Auth   | Success | Description                                                                                    |
+| ------ | ---------------------------------------- | ------ | ------- | ---------------------------------------------------------------------------------------------- |
+| POST   | `/trips/:id/join-requests`               | Bearer | 201     | `{ message? }`. Ask to join; open trips (`approvalRequired: false`) join at once (`APPROVED`). |
+| GET    | `/trips/:id/join-requests`               | Bearer | 200     | Organiser and staff. `status` (default `PENDING`), cursor.                                     |
+| GET    | `/me/join-requests`                      | Bearer | 200     | My requests, newest first. Optional `status`.                                                  |
+| POST   | `/join-requests/:id/approve`             | Bearer | 200     | Organiser or staff. 409 if the trip filled up or the request closed.                           |
+| POST   | `/join-requests/:id/reject`              | Bearer | 200     | `{ reason? }`, shown to the member.                                                            |
+| POST   | `/join-requests/:id/withdraw`            | Bearer | 200     | The requester only, while `PENDING`.                                                           |
+| GET    | `/trips/:id/participants`                | Bearer | 200     | Participants, the organiser and staff only. Public profile fields.                             |
+| POST   | `/trips/:id/participants/:userId/remove` | Bearer | 204     | `{ reason? }`. Organiser or staff; always audit logged.                                        |
+| POST   | `/trips/:id/leave`                       | Bearer | 204     | Leave a trip you joined (not the organiser).                                                   |
+
+**Statuses:** join requests are `PENDING`, `APPROVED`, `REJECTED`, `WITHDRAWN` or `CANCELLED`
+(closed by the system when the trip is cancelled, started or expires). Participants are
+`ACTIVE`, `COMPLETED` (the trip finished with them on it), `LEFT` or `REMOVED`.
+
+**Rules:** not your own trip; one pending request per member and trip (409 otherwise; asking
+again after a withdrawal, a decline or leaving is fine); private trips, drafts and blocked
+organisers return 404; only `PUBLISHED` trips that haven't departed take people (`FULL` → 409
+"This trip is full"); removed members cannot ask again (403); nobody decides their own request;
+only the organiser or staff remove people, and the organiser can't be removed.
+
+**Capacity** is checked with the trip row locked (`SELECT … FOR UPDATE`) while approving, and a
+database trigger rejects any participant beyond `max_participants` (and any lowering of the
+maximum below the people already on the trip), so simultaneous approvals cannot overfill a trip.
+`PUBLISHED ⇄ FULL` follows every join, leave and removal.
+
+**Trip view additions:** `viewer.participantStatus`, `viewer.joinRequest` (latest, `{ id,
+status }`), `viewer.pendingRequestCount` (organiser and staff), and the actions `join` / `leave`.
+
+### Notifications
+
+| Method | Path                             | Auth   | Success | Description                              |
+| ------ | -------------------------------- | ------ | ------- | ---------------------------------------- |
+| GET    | `/me/notifications`              | Bearer | 200     | Newest first; `unreadOnly=true`, cursor. |
+| GET    | `/me/notifications/unread-count` | Bearer | 200     | `{ count }`.                             |
+| POST   | `/me/notifications/:id/read`     | Bearer | 204     | Mark one read (404 for someone else's).  |
+| POST   | `/me/notifications/read-all`     | Bearer | 200     | `{ updated }`.                           |
+
+In-app notifications are created in the same transaction as the change they describe: new join
+request (or someone joined an open trip), request approved or declined, removed from a trip,
+trip updated (departure, return, places, stops or title; description edits are not announced),
+trip cancelled (participants and pending requesters), and a reminder within 24 hours of departure
+(sent once per trip). `data` carries ids only. Push and email delivery come with milestone 09.
 
 ### Discovery
 

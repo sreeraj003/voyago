@@ -11,7 +11,7 @@ verified before the next starts.
 | 04  | Authentication and user profiles            | Done        |
 | 05  | Trip creation and lifecycle                 | Done        |
 | 06  | Discovery and geospatial search             | Done        |
-| 07  | Join requests and participant management    | Not started |
+| 07  | Join requests and participant management    | Done        |
 | 08  | Communities and social graph                | Not started |
 | 09  | Chat and notifications                      | Not started |
 | 10  | Admin dashboard and moderation              | Not started |
@@ -21,6 +21,53 @@ verified before the next starts.
 | 14  | Subscriptions and monetisation              | Not started |
 | 15  | Analytics, observability and operations     | Not started |
 | 16  | Security, testing, launch readiness, deploy | Not started |
+
+---
+
+## Milestone 07: Join requests and participant management (2026-11-20)
+
+### Implemented
+
+- **Join flow** (`apps/api/src/participation`): ask to join (with an optional note), approve,
+  decline with an optional reason, withdraw, list a trip's requests and my own, list participants,
+  remove (organiser or staff, audit logged, optional reason) and leave. Open trips join at once.
+- **Rules:** no joining your own trip, one pending request at a time, private trips/drafts/
+  blocked organisers hidden (404), only published trips that haven't departed take people,
+  removed members can't ask again, nobody decides their own request, the organiser can't be
+  removed. Commercial departures are refused; bookings stay separate.
+- **Transactional capacity:** approval locks the trip row and rechecks the count; a database
+  trigger enforces the same limit for any write path. `FULL` follows joins, leaves and removals.
+- **Lifecycle:** starting a trip, cancelling it or expiry closes pending requests (`CANCELLED`);
+  completing marks participants `COMPLETED`, who keep access to the trip.
+- **In-app notifications** (`apps/api/src/notifications`): new request or join, approved,
+  declined, removed, trip updated (schedule and places), trip cancelled, and a once-only reminder
+  within 24 hours of departure. List, unread count, mark read and mark all read.
+- **Mobile:** the trip page shows "Ask to join" / "Join trip" with a note, the pending state with
+  "Withdraw request", "Leave trip" with confirmation, removed and declined messages, and for the
+  organiser "Join requests (n)". New screens: join requests (approve/decline with reason) and
+  people on the trip (organiser can remove with reason). The Inbox lists notifications, opens
+  the right screen and marks them read.
+
+### Database changes
+
+Migration `20261120120000_participation`; see `docs/DATABASE.md`.
+
+### Tests
+
+- 18 new end-to-end tests: approval flow with notifications, declining and asking again,
+  withdrawing, open trips, my requests, own trip/duplicates/self-approval/non-organiser
+  decisions, private/draft/blocked (404), cancelled/full/started trips, **five simultaneous
+  approvals for one free place (exactly one succeeds)**, the database trigger, participant
+  visibility, leaving and rejoining, audited removal, update/cancel notifications, completion,
+  reminder sent once, expiry closing requests, and notification ownership.
+- Unit tests for the new join/leave actions.
+
+### Outstanding
+
+- Invitations to private trips come with communities (milestone 08); until then private trips
+  can't be joined by request.
+- Co-organisers can't yet decide requests.
+- Notifications are in-app only; push and email arrive with milestone 09.
 
 ---
 

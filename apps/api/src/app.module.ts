@@ -14,6 +14,8 @@ import { HealthModule } from './health/health.module.js';
 import { IntegrationsModule } from './integrations/integrations.module.js';
 import { RedisModule } from './redis/redis.module.js';
 import { DiscoveryModule } from './discovery/discovery.module.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
+import { ParticipationModule } from './participation/participation.module.js';
 import { TripsModule } from './trips/trips.module.js';
 import { UsersModule } from './users/users.module.js';
 
@@ -77,10 +79,12 @@ export class AppModule {
         RedisModule,
         HealthModule,
         IntegrationsModule,
+        NotificationsModule,
         AuthModule,
         UsersModule,
         TripsModule,
         DiscoveryModule,
+        ParticipationModule,
         ...extraModules,
       ],
       providers: [

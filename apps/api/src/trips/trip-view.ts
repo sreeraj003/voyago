@@ -1,6 +1,8 @@
 import {
   canTransition,
   type GeoPoint,
+  type JoinRequestStatus,
+  type ParticipantStatus,
   type MotorcycleCategory,
   TERMINAL_TRIP_STATUSES,
   type Trip,
@@ -65,9 +67,20 @@ export interface TripGeo {
 
 export interface ViewerContext {
   user: AuthUser;
+  /** On the trip now (ACTIVE) or was when it finished (COMPLETED). */
   isParticipant: boolean;
   blocked: boolean;
+  participantStatus?: ParticipantStatus | null;
+  joinRequest?: { id: string; status: JoinRequestStatus } | null;
+  pendingRequestCount?: number;
 }
+
+/** What the viewer has to do with the trip, for working out join and leave. */
+export interface Membership {
+  participantStatus: ParticipantStatus | null;
+  hasPendingRequest: boolean;
+}
+const NO_MEMBERSHIP: Membership = { participantStatus: null, hasPendingRequest: false };
 
 export const isStaff = (user: AuthUser) => user.role === 'ADMIN' || user.role === 'MODERATOR';
 
@@ -87,7 +100,12 @@ export function hasStarted(trip: Pick<TripRecord, 'status' | 'departureAt'>, now
   return trip.status === 'IN_PROGRESS' || trip.departureAt.getTime() <= now;
 }
 
-export function allowedActions(trip: TripRecord, user: AuthUser, now = Date.now()): TripAction[] {
+export function allowedActions(
+  trip: TripRecord,
+  user: AuthUser,
+  membership: Membership = NO_MEMBERSHIP,
+  now = Date.now(),
+): TripAction[] {
   const isOrganiser = trip.organiserId === user.id;
   const terminal = TERMINAL_TRIP_STATUSES.includes(trip.status);
   const actions: TripAction[] = [];
@@ -106,6 +124,20 @@ export function allowedActions(trip: TripRecord, user: AuthUser, now = Date.now(
   }
   if ((isOrganiser || isStaff(user)) && canTransition(trip.status, 'CANCELLED')) {
     actions.push('cancel');
+  }
+  if (!isOrganiser) {
+    const status = membership.participantStatus;
+    // Removed members can't ask again; the organiser made that call.
+    const canAsk = status === null || status === 'LEFT';
+    if (
+      canAsk &&
+      !membership.hasPendingRequest &&
+      trip.status === 'PUBLISHED' &&
+      trip.departureAt.getTime() > now
+    ) {
+      actions.push('join');
+    }
+    if (status === 'ACTIVE' && !terminal) actions.push('leave');
   }
   return actions;
 }
@@ -181,7 +213,13 @@ export function toTripView(
     viewer: {
       isOrganiser,
       isParticipant: viewer.isParticipant,
-      actions: allowedActions(trip, viewer.user),
+      participantStatus: viewer.participantStatus ?? null,
+      joinRequest: viewer.joinRequest ?? null,
+      pendingRequestCount: viewer.pendingRequestCount ?? 0,
+      actions: allowedActions(trip, viewer.user, {
+        participantStatus: viewer.participantStatus ?? null,
+        hasPendingRequest: viewer.joinRequest?.status === 'PENDING',
+      }),
     },
   };
 }
