@@ -3,24 +3,102 @@
 Milestones follow the development pack (`00_START_HERE.md`). Each milestone is completed and
 verified before the next starts.
 
-| #   | Milestone                                   | Status      |
-| --- | ------------------------------------------- | ----------- |
-| 01  | Project foundation and architecture         | Done        |
-| 02  | Database design and migrations              | Done        |
-| 03  | Backend foundation and API conventions      | Done        |
-| 04  | Authentication and user profiles            | Done        |
-| 05  | Trip creation and lifecycle                 | Done        |
-| 06  | Discovery and geospatial search             | Done        |
-| 07  | Join requests and participant management    | Done        |
-| 08  | Communities and social graph                | Done        |
-| 09  | Chat and notifications                      | Done        |
-| 10  | Admin dashboard and moderation              | Done        |
-| 11  | Live location and safety workflows          | Done        |
-| 12  | Commercial operators and packages           | Done        |
-| 13  | Bookings, payments, commissions and refunds | Done        |
-| 14  | Subscriptions and monetisation              | Done        |
-| 15  | Analytics, observability and operations     | Done        |
-| 16  | Security, testing, launch readiness, deploy | Not started |
+| #   | Milestone                                   | Status |
+| --- | ------------------------------------------- | ------ |
+| 01  | Project foundation and architecture         | Done   |
+| 02  | Database design and migrations              | Done   |
+| 03  | Backend foundation and API conventions      | Done   |
+| 04  | Authentication and user profiles            | Done   |
+| 05  | Trip creation and lifecycle                 | Done   |
+| 06  | Discovery and geospatial search             | Done   |
+| 07  | Join requests and participant management    | Done   |
+| 08  | Communities and social graph                | Done   |
+| 09  | Chat and notifications                      | Done   |
+| 10  | Admin dashboard and moderation              | Done   |
+| 11  | Live location and safety workflows          | Done   |
+| 12  | Commercial operators and packages           | Done   |
+| 13  | Bookings, payments, commissions and refunds | Done   |
+| 14  | Subscriptions and monetisation              | Done   |
+| 15  | Analytics, observability and operations     | Done   |
+| 16  | Security, testing, launch readiness, deploy | Done   |
+
+---
+
+## Milestone 16: Security, testing, launch readiness and deployment (2026-11-23)
+
+### Implemented
+
+- **Security review** of every area in the spec: `docs/SECURITY_REVIEW.md`. Four issues found
+  and fixed:
+  - Rate limits were per server, so two instances doubled every limit. They are now shared in
+    Redis, with an in-memory fallback if Redis is down.
+  - Joining an open trip could deadlock under load. The trip is now locked first.
+  - Production now refuses http CORS origins.
+  - The API reference is off in production unless `API_DOCS_ENABLED=true`.
+- **Dependencies:** the one high-severity advisory (`effect`, via the Prisma CLI) is fixed by an
+  override. Four moderate ones remain in mobile test tooling only.
+- **Account deletion and data export:**
+  - API: `GET /me/export`, `GET /me/deletion`, `POST /me/delete`.
+  - Mobile: **Profile → Your data and account**, with download my data, what is erased and kept,
+    what blocks deletion, and type DELETE to confirm.
+  - Deletion anonymises the account, frees trip places, signs out every device and is audited.
+    Money records are kept 8 years without the member's name or contacts.
+- **Performance:** load-tested on 20,000 members and 50,000 trips, with scripts in
+  `scripts/perf/`.
+  - Searching near a point went from 24 s to 0.1 s (enum filters compared as text misled the
+    planner).
+  - Trending went from 0.75 s to 0.1 s and nearby from 0.19 s to 0.07 s. This came from a stored
+    participant count kept by a trigger, a hashed block list, one grouped count for trending, and
+    JIT off.
+  - 1,000 realtime connections opened in 1.3 s.
+- **Deployment:**
+  - `apps/api/Dockerfile` with an API target (production dependencies, non-root, health check)
+    and a migration target.
+  - Staging and production settings templates (`infra/deploy/`), checked against the settings
+    validation.
+  - A CI job that builds both images and checks the API starts as a non-root user.
+  - `docs/DEPLOYMENT.md`: environments, managed services, releasing, rollback, and the
+    performance baseline.
+- **Launch readiness:** `docs/LAUNCH_READINESS.md`, with:
+  - the release gate, pass and fail;
+  - the testing matrix;
+  - the India legal checklist (nothing obtained yet; each item needs professional advice);
+  - the Bengaluru closed beta plan;
+  - the outstanding risks.
+
+### Database changes
+
+Migration `20261128090000_trip_participant_count`: `trips.participant_count` kept by the trigger
+`trip_participants_count`. See `docs/DATABASE.md`.
+
+### APIs
+
+`GET /me/export`, `GET /me/deletion`, `POST /me/delete`. New settings: `API_DOCS_ENABLED` and
+`DATABASE_SESSION_OPTIONS` (default `-c jit=off`). See `docs/API.md`.
+
+### Tests
+
+- New end-to-end suites:
+  - `authorization-sweep`: every route without a token, every admin route as a member, forged
+    tokens, and the reviewed list of public routes.
+  - `account`: export, blockers, confirmation, the full erase, and the recent sign-in check.
+  - `concurrency`: ten joins for three places, parallel refresh, duplicate registration, double
+    deletion.
+  - `redis-throttler`: counts shared between instances, and the fallback.
+- Mobile: account screen (3 tests).
+
+### Outstanding
+
+These are the release gate items marked as failing in `docs/LAUNCH_READINESS.md`. They need
+people, accounts or devices rather than code:
+
+- Legal review, terms of use, a privacy notice and a grievance contact.
+- Hosting in an Indian region with a restore drill on the real database.
+- Store builds and listings.
+- Device testing.
+- An external penetration test.
+
+The four beta blockers are listed there.
 
 ---
 

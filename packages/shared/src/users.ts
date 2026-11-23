@@ -237,3 +237,58 @@ export const UpdateMotorcycleSchema = MotorcycleInputSchema.partial().refine(
 );
 
 export const MAX_MOTORCYCLES_PER_USER = 10;
+
+// ── Account deletion and data export ────────────────────────────────────────
+
+/** Why an account can't be deleted yet; each one has something the member can do about it. */
+export const DeletionBlockerSchema = z.object({
+  code: z.enum([
+    'ORGANISING_TRIPS',
+    'COMMUNITY_OWNER',
+    'BUSINESS_ACCOUNT',
+    'OPEN_BOOKINGS',
+    'LIVE_SUBSCRIPTION',
+    'STAFF_ACCOUNT',
+  ]),
+  message: z.string(),
+});
+export type DeletionBlocker = z.infer<typeof DeletionBlockerSchema>;
+
+export const AccountDeletionStatusSchema = z.object({
+  canDelete: z.boolean(),
+  blockers: z.array(DeletionBlockerSchema),
+  /** Whether the member must type their password to confirm (accounts that have one). */
+  passwordRequired: z.boolean(),
+  /** What is erased and what is kept, in plain words. */
+  erased: z.array(z.string()),
+  kept: z.array(z.string()),
+});
+export type AccountDeletionStatus = z.infer<typeof AccountDeletionStatusSchema>;
+
+export const DeleteAccountSchema = z.object({
+  /** Typed by the member to confirm. */
+  confirm: z.literal('DELETE', { error: 'Type DELETE to confirm' }),
+  /** Required for accounts with a password; others must have signed in within 15 minutes. */
+  password: z.string().min(1).max(200).optional(),
+});
+export type DeleteAccountInput = z.input<typeof DeleteAccountSchema>;
+
+/** How recent a sign-in must be to delete an account that has no password. */
+export const DELETE_RECENT_SIGN_IN_MINUTES = 15;
+
+export const ACCOUNT_DELETION_ERASED = [
+  'Your name, username, bio, photo, home city and languages',
+  'Your email address, phone number, password and Google or Apple sign-in',
+  'Your preferences, motorcycles, emergency contacts and saved searches',
+  'Your followers, the people you follow and your blocks',
+  'Your posts, reviews, notifications and push tokens',
+  'Your community memberships and places on upcoming trips',
+  'Your analytics history',
+];
+
+export const ACCOUNT_DELETION_KEPT = [
+  'Messages you sent stay in their chats, shown as from "Deleted member"',
+  'Bookings, payments and refunds are kept for 8 years for accounting and tax law, without your name or contact details',
+  'Reports and moderation records are kept to keep members safe',
+  'Trips you organised that have ended stay in their members’ history',
+];

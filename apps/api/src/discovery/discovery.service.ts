@@ -113,7 +113,7 @@ export class DiscoveryService {
     const prefs = await this.preferences(user.id);
     const statuses = query.status ?? ['PUBLISHED'];
 
-    const filters: Prisma.Sql[] = [Prisma.sql`t.status::text = ANY(${statuses})`];
+    const filters: Prisma.Sql[] = [Prisma.sql`t.status = ANY(${statuses}::"TripStatus"[])`];
     if (query.q) {
       // Text with no letters or digits matches nothing rather than everything.
       filters.push(
@@ -122,9 +122,9 @@ export class DiscoveryService {
           : Prisma.sql`false`,
       );
     }
-    if (query.mode) filters.push(Prisma.sql`t.mode::text = ${query.mode}`);
+    if (query.mode) filters.push(Prisma.sql`t.mode = ${query.mode}::"TripMode"`);
     if (query.activityType)
-      filters.push(Prisma.sql`t.activity_type::text = ANY(${query.activityType})`);
+      filters.push(Prisma.sql`t.activity_type = ANY(${query.activityType}::"ActivityType"[])`);
     if (query.from) {
       filters.push(Prisma.sql`lower(t.origin_name) LIKE ${`%${escapeLike(query.from)}%`}`);
     }
@@ -140,9 +140,10 @@ export class DiscoveryService {
       filters.push(Prisma.sql`t.estimated_budget_paise <= ${query.budgetMaxPaise}`);
     }
     if (query.minSeats !== undefined) {
-      filters.push(Prisma.sql`t.max_participants - pc.n >= ${query.minSeats}`);
+      filters.push(Prisma.sql`t.max_participants - t.participant_count >= ${query.minSeats}`);
     }
-    if (query.difficulty) filters.push(Prisma.sql`t.difficulty::text = ANY(${query.difficulty})`);
+    if (query.difficulty)
+      filters.push(Prisma.sql`t.difficulty = ANY(${query.difficulty}::"TripDifficulty"[])`);
     if (query.bikeCategory) {
       filters.push(Prisma.sql`t.mode = 'RIDE' AND (coalesce(cardinality(t.bike_categories), 0) = 0
         OR ${query.bikeCategory}::"MotorcycleCategory" = ANY(t.bike_categories))`);
@@ -205,17 +206,20 @@ export class DiscoveryService {
       Prisma.sql`t.status = 'PUBLISHED'`,
       Prisma.sql`t.departure_at <= now() + make_interval(days => ${TRENDING_WINDOW_DAYS})`,
     ];
-    if (query.mode) filters.push(Prisma.sql`t.mode::text = ${query.mode}`);
+    if (query.mode) filters.push(Prisma.sql`t.mode = ${query.mode}::"TripMode"`);
     if (near) filters.push(withinSql(near));
     const inner = this.cardSelect(user.id, filters, near, Prisma.sql`NULL::float8`, prefs);
     const rows = await this.prisma.$queryRaw<CardRow[]>`
-      SELECT s.*, (
-          SELECT count(*)::int FROM "trip_participants" p
-          WHERE p.trip_id = s.id AND p.status = 'ACTIVE' AND p.role <> 'ORGANISER'
-            AND p.joined_at > now() - interval '7 days'
-        ) AS recent_joins
+      SELECT s.*, coalesce(rj.n, 0) AS recent_joins
       FROM (${inner}) s
-      ORDER BY recent_joins DESC,
+      -- Counted once for the few trips joined this week, not once per candidate trip.
+      LEFT JOIN (
+        SELECT p.trip_id, count(*)::int AS n FROM "trip_participants" p
+        WHERE p.status = 'ACTIVE' AND p.role <> 'ORGANISER'
+          AND p.joined_at > now() - interval '7 days'
+        GROUP BY p.trip_id
+      ) rj ON rj.trip_id = s.id
+      ORDER BY coalesce(rj.n, 0) DESC,
         s.participant_count::float8 / s.max_participants DESC,
         s.departure_at ASC, s.id ASC
       LIMIT ${query.limit + 1} OFFSET ${offset}`;
@@ -232,7 +236,7 @@ export class DiscoveryService {
       Prisma.sql`t.status = 'PUBLISHED'`,
       Prisma.sql`t.destination IS NOT NULL`,
     ];
-    if (query.mode) filters.push(Prisma.sql`t.mode::text = ${query.mode}`);
+    if (query.mode) filters.push(Prisma.sql`t.mode = ${query.mode}::"TripMode"`);
     if (query.q)
       filters.push(Prisma.sql`lower(t.destination_name) LIKE ${`${escapeLike(query.q)}%`}`);
     const rows = await this.prisma.$queryRaw<
@@ -270,10 +274,6 @@ export class DiscoveryService {
     return Prisma.sql`
       FROM "trips" t
       JOIN "users" o ON o.id = t.organiser_id
-      CROSS JOIN LATERAL (
-        SELECT count(*)::int AS n FROM "trip_participants" p
-        WHERE p.trip_id = t.id AND p.status = 'ACTIVE'
-      ) pc
       WHERE t.deleted_at IS NULL
         AND t.hidden_at IS NULL
         AND t.visibility = 'PUBLIC'
@@ -282,10 +282,12 @@ export class DiscoveryService {
         AND t.departure_at > now()
         AND t.origin IS NOT NULL
         AND o.status = 'ACTIVE' AND o.deleted_at IS NULL
-        AND NOT EXISTS (
-          SELECT 1 FROM "user_blocks" b
-          WHERE (b.blocker_id = t.organiser_id AND b.blocked_id = ${userId}::uuid)
-             OR (b.blocker_id = ${userId}::uuid AND b.blocked_id = t.organiser_id)
+        -- Blocks either way. One hashed list per query rather than a lookup per trip; both
+        -- columns are part of the primary key, so NOT IN never meets a NULL.
+        AND t.organiser_id NOT IN (
+          SELECT b.blocked_id FROM "user_blocks" b WHERE b.blocker_id = ${userId}::uuid
+          UNION ALL
+          SELECT b.blocker_id FROM "user_blocks" b WHERE b.blocked_id = ${userId}::uuid
         )`;
   }
 
@@ -305,7 +307,7 @@ export class DiscoveryService {
         ST_Y(t.origin::geometry) AS olat, ST_X(t.origin::geometry) AS olng,
         ST_Y(t.destination::geometry) AS dlat, ST_X(t.destination::geometry) AS dlng,
         t.departure_at, t.return_at, t.max_participants::int AS max_participants,
-        pc.n AS participant_count, t.estimated_budget_paise, t.currency,
+        t.participant_count::int AS participant_count, t.estimated_budget_paise, t.currency,
         t.difficulty::text AS difficulty, t.min_engine_cc::int AS min_engine_cc,
         t.bike_categories::text[] AS bike_categories,
         t.route_distance_meters, t.route_duration_seconds, t.route_travel_mode,

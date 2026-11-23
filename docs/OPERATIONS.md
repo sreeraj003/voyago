@@ -14,6 +14,8 @@ How Voyago is watched, backed up and run day to day. Business metric definitions
 | Prometheus metrics       | `GET /api/v1/metrics` with `Authorization: Bearer $METRICS_TOKEN`              |
 | Alert rules              | `infra/monitoring/alerts.yml`; scrape config `infra/monitoring/prometheus.yml` |
 | Backups                  | `scripts/backup.sh`; drills with `scripts/restore-drill.sh`                    |
+| Deploying and rollback   | `docs/DEPLOYMENT.md`                                                           |
+| Load tests               | `scripts/perf/` (volume data, HTTP and realtime load)                          |
 
 ## Configuration
 
@@ -228,6 +230,11 @@ email, SMS, push), the related feature degrades and the rest works; check the pr
 
 Use the `slowest` routes in admin **System**, then check the database for long queries
 (`pg_stat_activity`) and missing indexes.
+
+Discovery is the heaviest read. If it is slow, check that `DATABASE_SESSION_OPTIONS` is applied
+(`SHOW jit` on an app connection should say `off`), run `ANALYZE trips`, and compare the plan with
+the reviewed ones in `docs/DATABASE.md`. Rate limits live in Redis: if Redis is down, limits are per
+instance until it returns.
 
 ### Background job failing
 

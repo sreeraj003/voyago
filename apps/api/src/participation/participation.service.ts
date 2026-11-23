@@ -85,6 +85,10 @@ export class ParticipationService {
     assertTakingPeople(trip);
 
     const requestId = await this.prisma.$transaction(async (tx) => {
+      // Open trips: lock the trip row before writing anything that references it. Inserting the
+      // request first takes a shared lock on the trip, and two joins upgrading that lock at the
+      // same time deadlock.
+      if (!trip.approvalRequired) await this.lockForAdmission(tx, tripId);
       const created = await tx.tripJoinRequest.create({
         data: { tripId, userId: user.id, message: message?.trim() || null },
         select: { id: true },

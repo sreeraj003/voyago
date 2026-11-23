@@ -41,6 +41,11 @@ export async function createApp(
   });
   app.enableShutdownHooks();
 
+  const docs =
+    config.API_DOCS_ENABLED === 'true' ||
+    (config.API_DOCS_ENABLED === '' && config.NODE_ENV !== 'production');
+  if (!docs) return app;
+
   const document = SwaggerModule.createDocument(
     app,
     new DocumentBuilder()

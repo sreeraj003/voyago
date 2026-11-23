@@ -261,6 +261,34 @@ fixed id beginning `5eed0000`, so re-running changes nothing. The `dev_*` accoun
 - Route data (`trips.origin/destination`, `trip_stops`) is planning data only. Live location is a
   separate store (Redis, milestone 11) and never written to these tables.
 
+## Milestone 16 changes (`20261128090000_trip_participant_count`)
+
+- `trips.participant_count` (`SMALLINT`, default 0): the number of `ACTIVE` participants. It is kept
+  by the trigger `trip_participants_count` (after insert, delete, or update of `status` or
+  `trip_id` on `trip_participants`), which recounts rather than increments, so it cannot drift.
+  The migration backfills it. The app only reads it (discovery ranking and the `minSeats`
+  filter); capacity is still enforced by `enforce_trip_capacity`.
+- No other schema change. Account deletion anonymises the `users` row and deletes the member's
+  personal rows in one transaction (see `docs/SECURITY_REVIEW.md`); the row itself stays so that
+  messages, reports and money records keep a valid foreign key.
+
+### Query plans (reviewed 2026-11-23)
+
+Load-tested on 20,000 members and 50,000 published trips (`scripts/perf/seed-volume.sql`):
+
+- Discovery compared enum columns as text (`status::text = ANY(...)`), which hid the column
+  statistics. Combined with the radius filter, the planner estimated one row and read `users` once
+  per trip: 24 s for a search near Bengaluru. The filters now compare the enum types directly.
+- The per-trip participant count (a subquery for every candidate) is replaced by
+  `trips.participant_count`.
+- The block check now builds the member's blocked ids once per query (`NOT IN`, hashed) instead of
+  an `OR` lookup per trip.
+- Trending counts this week's joins with one grouped query instead of one subquery per trip.
+- JIT compilation is turned off per connection (`DATABASE_SESSION_OPTIONS`); it cost 40 ms to
+  400 ms per discovery query.
+
+Results are in `docs/DEPLOYMENT.md`, "Performance baseline".
+
 ## Milestone 15 changes (`20261127090000_analytics_operations`)
 
 - New enum `AnalyticsEventName` (the 15 events in `docs/ANALYTICS.md`).

@@ -692,6 +692,8 @@ model Trip {
   returnAt                 DateTime?                              @map("return_at") @db.Timestamptz(3)
   minParticipants          Int                                    @default(1) @map("min_participants") @db.SmallInt
   maxParticipants          Int                                    @map("max_participants") @db.SmallInt
+  /// Active participants, kept by a database trigger (milestone 16). Read-only for the app.
+  participantCount         Int                                    @default(0) @map("participant_count") @db.SmallInt
   /// Per-person cost-sharing estimate for community trips. Not a price; nothing is charged.
   estimatedBudgetPaise     Int?                                   @map("estimated_budget_paise")
   currency                 String                                 @default("INR") @db.Char(3)

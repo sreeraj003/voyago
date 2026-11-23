@@ -22,6 +22,8 @@ export const EnvSchema = z
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
+    /** Swagger UI at /api/docs. Empty: on outside production, off in production. */
+    API_DOCS_ENABLED: z.enum(['true', 'false', '']).default(''),
     DATABASE_URL: z
       .string()
       .min(1, 'DATABASE_URL is required')
@@ -29,6 +31,12 @@ export const EnvSchema = z
         (value) => /^postgres(ql)?:\/\//.test(value),
         'DATABASE_URL must be a postgres:// URL',
       ),
+    /**
+     * Session settings sent when each connection opens. JIT compilation is off by default: it
+     * adds 40 ms or more to short app queries (measured in the milestone 16 load test). Leave
+     * empty when a connection pooler rejects startup options.
+     */
+    DATABASE_SESSION_OPTIONS: z.string().default('-c jit=off'),
     REDIS_URL: z
       .string()
       .min(1, 'REDIS_URL is required')
@@ -248,6 +256,16 @@ export const EnvSchema = z
     for (const key of ['JWT_ACCESS_SECRET', 'OTP_HMAC_SECRET'] as const) {
       if (/change-me|example|dev-only/i.test(env[key])) {
         ctx.addIssue({ code: 'custom', path: [key], message: 'placeholder secret in production' });
+      }
+    }
+    // Browsers may only call the production API from https origins.
+    for (const origin of env.CORS_ORIGINS) {
+      if (!origin.startsWith('https://')) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['CORS_ORIGINS'],
+          message: `only https origins are allowed in production (got ${origin})`,
+        });
       }
     }
     if (env.JWT_ACCESS_SECRET === env.OTP_HMAC_SECRET) {

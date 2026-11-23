@@ -9,6 +9,7 @@ import { RealtimeModule } from './chat/realtime.service.js';
 import { AuthGuard } from './common/auth/auth.guard.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { ZodValidationPipe } from './common/pipes/zod-validation.pipe.js';
+import { RedisThrottlerStorage } from './common/redis-throttler.storage.js';
 import { resolveRequestId } from './common/request-id.js';
 import { type AppConfig } from './config/app-config.js';
 import { ConfigModule } from './config/config.module.js';
@@ -16,6 +17,7 @@ import { PrismaModule } from './database/prisma.module.js';
 import { HealthModule } from './health/health.module.js';
 import { IntegrationsModule } from './integrations/integrations.module.js';
 import { RedisModule } from './redis/redis.module.js';
+import { RedisService } from './redis/redis.service.js';
 import { SafetyModule } from './safety/safety.module.js';
 import { SocialModule } from './social/social.module.js';
 import { CommercialModule } from './commercial/commercial.module.js';
@@ -83,9 +85,18 @@ export class AppModule {
               : {}),
           },
         }),
-        ThrottlerModule.forRoot([
-          { ttl: config.RATE_LIMIT_TTL_SECONDS * 1000, limit: config.RATE_LIMIT_MAX },
-        ]),
+        ThrottlerModule.forRootAsync({
+          inject: [RedisService],
+          useFactory: (redis: RedisService) => ({
+            throttlers: [
+              { ttl: config.RATE_LIMIT_TTL_SECONDS * 1000, limit: config.RATE_LIMIT_MAX },
+            ],
+            // Shared across instances in Redis. Tests run many apps from one address in
+            // parallel, so each keeps its own counters there (RedisThrottlerStorage is tested
+            // on its own).
+            ...(config.NODE_ENV === 'test' ? {} : { storage: new RedisThrottlerStorage(redis) }),
+          }),
+        }),
         PrismaModule,
         RedisModule,
         HealthModule,

@@ -54,6 +54,28 @@ covered by `apps/api/test/api-foundation.e2e-spec.ts`.
 | DELETE | `/me/motorcycles/:id` | Bearer | Remove. Another member's id returns 404.                                     |
 | GET    | `/users/:username`    | Bearer | Public profile. Never contains email or phone. Blocked or inactive → 404.    |
 
+### Your data and account deletion
+
+| Method | Path           | Auth   | Description                                                                                                                                                      |
+| ------ | -------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/me/export`   | Bearer | Everything held about me as JSON (`format: "voyago-export-v1"`), sent as a `voyago-data.json` attachment with `cache-control: no-store`. No secrets. 5 per hour. |
+| GET    | `/me/deletion` | Bearer | `AccountDeletionStatusSchema`: `canDelete`, `blockers` (codes below), `passwordRequired`, and the lists of what is erased and what is kept.                      |
+| POST   | `/me/delete`   | Bearer | `{ "confirm": "DELETE", "password"?: string }` → 204. 10 per minute.                                                                                             |
+
+Deleting:
+
+- **Identity check:** the password is required when the account has one; a wrong or missing
+  password gives 401. Accounts without a password must have signed in within the last 15 minutes,
+  otherwise 403 "Sign in again…".
+- **Blockers:** while one applies the answer is 409 and `details[].path` lists the codes:
+  - `ORGANISING_TRIPS`: cancel or hand over upcoming trips first;
+  - `COMMUNITY_OWNER`;
+  - `BUSINESS_ACCOUNT`;
+  - `OPEN_BOOKINGS`;
+  - `LIVE_SUBSCRIPTION`;
+  - `STAFF_ACCOUNT`.
+- **Effect:** anonymises the account, frees trip places, revokes every session (all devices get 401) and frees the email and phone for a new account. A second request after success gets 401.
+
 Public profiles: `PUBLIC` shows the full public profile to signed-in members; `FOLLOWERS` shows it
 to followers and the basics (name, username, verification badges) to others; `PRIVATE` shows only
 the basics. Schemas: `PrivateProfileSchema`, `PublicProfileSchema` in `@voyago/shared`.
@@ -891,10 +913,17 @@ stricter limit: `AUTH_RATE_LIMIT_MAX` (default 10) per minute per IP for each ro
 receive 3 codes per 15 minutes and 10 per day. Each code allows 5 attempts. Behind a load balancer, set
 `TRUST_PROXY=true` so the real client IP is used.
 
+The counts are kept in Redis, so every API instance shares them. If Redis is unreachable each
+instance counts in its own memory until it is back. Account deletion is limited to 10 per minute
+and data export to 5 per hour.
+
 ## CORS and headers
 
-Allowed browser origins come from `CORS_ORIGINS` (comma-separated). Helmet sets security headers;
-`x-powered-by` is removed.
+Allowed browser origins come from `CORS_ORIGINS` (comma-separated); in production every origin
+must be https or the API refuses to start. Helmet sets security headers; `x-powered-by` is removed.
+
+The interactive reference at `/api/docs` follows `API_DOCS_ENABLED`: `true` or `false` forces it;
+empty (the default) turns it on everywhere except production.
 
 ## Versioning
 

@@ -14,6 +14,7 @@ export default function MeLayout() {
         contentStyle: { backgroundColor: colors.background },
       }}
     >
+      <Stack.Screen name="account" options={{ title: 'Your data and account' }} />
       <Stack.Screen name="blocked" options={{ title: 'Blocked people' }} />
       <Stack.Screen name="emergency-contacts" options={{ title: 'Emergency contacts' }} />
     </Stack>

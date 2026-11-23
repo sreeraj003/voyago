@@ -12,3 +12,5 @@ onlyBuiltDependencies:
 overrides:
   react: 19.3.0
   react-dom: 19.3.0
+  # Security: ReDoS fix (GHSA advisory on effect <=3.22.0, pulled in by the Prisma CLI config).
+  'effect@<3.22.1': 3.22.4

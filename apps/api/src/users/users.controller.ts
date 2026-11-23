@@ -1,6 +1,19 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Header,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Req,
+} from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
+  DeleteAccountSchema,
   MotorcycleInputSchema,
   UpdateMotorcycleSchema,
   UpdatePreferencesSchema,
@@ -12,19 +25,59 @@ import { type AuthUser, CurrentUser } from '../common/auth/current-user.decorato
 import { ApiErrorResponses } from '../common/openapi/zod-openapi.js';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe.js';
 import { createZodDto } from '../common/validation/zod-dto.js';
+import { AccountService } from './account.service.js';
 import { UsersService } from './users.service.js';
 
 class UpdateProfileDto extends createZodDto(UpdateProfileSchema) {}
 class UpdatePreferencesDto extends createZodDto(UpdatePreferencesSchema) {}
 class MotorcycleInputDto extends createZodDto(MotorcycleInputSchema) {}
 class UpdateMotorcycleDto extends createZodDto(UpdateMotorcycleSchema) {}
+class DeleteAccountDto extends createZodDto(DeleteAccountSchema) {}
 
 @ApiTags('me')
 @ApiBearerAuth()
 @ApiErrorResponses(401)
 @Controller('me')
 export class MeController {
-  constructor(private readonly users: UsersService) {}
+  constructor(
+    private readonly users: UsersService,
+    private readonly account: AccountService,
+  ) {}
+
+  @Get('deletion')
+  @ApiOperation({
+    summary: 'Whether my account can be deleted now, what is erased and what is kept',
+  })
+  async deletionStatus(@CurrentUser() user: AuthUser) {
+    return { data: await this.account.deletionStatus(user) };
+  }
+
+  @Post('delete')
+  @HttpCode(204)
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
+  @ApiOperation({
+    summary: 'Delete my account',
+    description:
+      'Needs `confirm: "DELETE"`, and the password for accounts that have one (otherwise a sign-in in the last 15 minutes). Refused with 409 and the reasons while something must be settled first (see GET /me/deletion). Signs out everywhere.',
+  })
+  @ApiErrorResponses(400, 401, 403, 409, 429)
+  async deleteAccount(
+    @CurrentUser() user: AuthUser,
+    @Body() body: DeleteAccountDto,
+    @Req() req: { id?: string },
+  ) {
+    await this.account.deleteAccount(user, body, req.id ?? null);
+  }
+
+  @Get('export')
+  @Header('content-disposition', 'attachment; filename="voyago-data.json"')
+  @Header('cache-control', 'no-store')
+  @Throttle({ default: { ttl: 3_600_000, limit: 5 } })
+  @ApiOperation({ summary: 'Download everything Voyago holds about me, as JSON' })
+  @ApiErrorResponses(429)
+  async exportData(@CurrentUser() user: AuthUser) {
+    return { data: await this.account.exportData(user) };
+  }
 
   @Get()
   @ApiOperation({ summary: 'My profile, including private contact details' })

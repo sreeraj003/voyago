@@ -71,6 +71,11 @@ export default function ProfileScreen() {
         onPress={() => router.push('/me/emergency-contacts')}
       />
       <Button title="Blocked people" variant="link" onPress={() => router.push('/me/blocked')} />
+      <Button
+        title="Your data and account"
+        variant="link"
+        onPress={() => router.push('/me/account')}
+      />
       <Button title="Sign out" variant="secondary" onPress={() => void signOut()} />
     </Screen>
   );
