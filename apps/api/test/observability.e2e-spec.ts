@@ -11,7 +11,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { type App } from 'supertest/types.js';
-import { z } from 'zod';
+import { type z } from 'zod';
 import { PrismaService } from '../src/database/prisma.service.js';
 import { AnalyticsService } from '../src/observability/analytics.service.js';
 import { JobMonitor } from '../src/observability/job-monitor.service.js';
