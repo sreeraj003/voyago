@@ -261,6 +261,20 @@ fixed id beginning `5eed0000`, so re-running changes nothing. The `dev_*` accoun
 - Route data (`trips.origin/destination`, `trip_stops`) is planning data only. Live location is a
   separate store (Redis, milestone 11) and never written to these tables.
 
+## Milestone 15 changes (`20261127090000_analytics_operations`)
+
+- New enum `AnalyticsEventName` (the 15 events in `docs/ANALYTICS.md`).
+- New `analytics_events`: `name`, `actor_key` (nullable `CHAR(32)`, a keyed hash of the member,
+  never the user id), `properties` (JSON, default `{}`), `occurred_at`. Checks:
+  `analytics_events_properties_object`, `analytics_events_properties_small` (under 1 KB) and
+  `analytics_events_actor_key_format` (32 lowercase hex). Indexes on `(name, occurred_at)`,
+  `(actor_key, occurred_at)` and `occurred_at`. No foreign key to `users`, by design: events are
+  pseudonymous and are deleted by the retention job.
+- New `job_runs` (one row per background job: last start, success and error, consecutive
+  failures, run and failure counts; `job_runs_counts` keeps the counts non-negative).
+- `users.profile_completed_at`, backfilled from `updated_at` for profiles that already have a
+  bio, home city, a language and an interest (no event is recorded for those).
+
 ## Milestone 14 changes (`20261126090000_subscription_pending`, `20261126090100_subscriptions`)
 
 - `SubscriptionStatus` gains `PENDING` (waiting for the first payment), in its own migration

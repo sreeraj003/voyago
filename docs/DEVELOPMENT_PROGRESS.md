@@ -19,8 +19,126 @@ verified before the next starts.
 | 12  | Commercial operators and packages           | Done        |
 | 13  | Bookings, payments, commissions and refunds | Done        |
 | 14  | Subscriptions and monetisation              | Done        |
-| 15  | Analytics, observability and operations     | Not started |
+| 15  | Analytics, observability and operations     | Done        |
 | 16  | Security, testing, launch readiness, deploy | Not started |
+
+---
+
+## Milestone 15: Analytics, observability and operations (2026-11-23)
+
+### Implemented
+
+- **Product analytics, first-party:** 15 events (sign-up, profile completed, trip created,
+  published, viewed, started, completed and cancelled, join requested and approved, community
+  joined, booking started and confirmed, subscription started, daily active). They are stored in
+  Voyago's own database under a pseudonymous key (a keyed hash, never the user id), with only the
+  properties the dictionary allows. There are no names, contact details, free text or
+  coordinates, and the database enforces this too. Recording never fails the action that caused
+  it. Event dictionary: `docs/ANALYTICS.md`.
+- **Business metrics:** admin **Metrics** (operations and super admins) has a period picker (7 to
+  365 days) and shows:
+  - **North Star:** completed group experiences (trips with 2+ people) per month.
+  - **Engagement:** DAU, MAU and stickiness.
+  - **Growth:** sign-up conversion, profile completion and 30-day retention.
+  - **Trips:** trips created and published, trips with join requests, completion rate and repeat
+    organiser rate.
+  - **Money:** GMV, commission, subscription MRR and revenue, refund rate, payment success rate,
+    provider fees and contribution margin.
+
+  These come from the source tables (ledger, payments, trips), so they match the money pages.
+
+- **System status:** admin **System** (support, operations, super admins) shows:
+  - Database and Redis status with probe latency.
+  - Request count, server-error rate, p50 and p95 latency, and the slowest routes.
+  - Every background job with its health and last error.
+  - Stuck payment webhooks, bad signatures, failed refunds and amount mismatches.
+  - Open and overdue moderation reports against the SLA.
+  - App crash reports in the last 24 hours.
+- **Monitoring:** Prometheus metrics at `/api/v1/metrics`, guarded by `METRICS_TOKEN` (off when it
+  is unset). Labels are route patterns only. Scrape config, uptime checks and alert rules are in
+  `infra/monitoring/`.
+- **Alerts:** server errors, jobs failing 3 times in a row, and payment webhooks that fail to apply
+  are logged at error level. They are also posted to `ALERT_WEBHOOK_URL` (Slack-compatible) when it
+  is set, at most once per 15 minutes per kind.
+- **Background jobs:** all eight interval jobs (push delivery, safety sweep, payment
+  reconciliation, subscription sweep, trip reminders, trip expiry, saved-search alerts, data
+  retention) now run through one job monitor. Each job records its runs in `job_runs`, a run never
+  overlaps the previous one, and a failure can't crash the process.
+- **Crash reporting:** the mobile app and the admin app report uncaught errors to
+  `POST /api/v1/client-errors`. A report holds the platform, app version, error, stack lines and
+  the route pattern only. The API scrubs it again (emails, phone numbers, ids, tokens,
+  coordinates, query strings) before logging it.
+- **Data retention job** (every 6 hours) deletes:
+  - Analytics events after 400 days (configurable), and a deleted account's events within 3 days.
+  - Read notifications after 180 days.
+  - Ended sessions after 30 days.
+  - Used tokens after 7 days.
+  - OTP challenges after 1 day.
+
+  Money records and the audit log are never deleted.
+
+- **Backups:** `scripts/backup.sh` writes a compressed `pg_dump` with a checksum, checks that it
+  can be read, copies it off-site when told how, and prunes old copies. `scripts/restore-drill.sh`
+  restores a backup into a scratch database, checks it and drops it. The drill was run against
+  the development database and passed.
+- **Operations guide:** `docs/OPERATIONS.md` covers:
+  - Monitoring set-up and uptime checks.
+  - The backup schedule and restore drills.
+  - The retention table and the moderation SLA (1, 4, 24 and 72 hours by severity).
+  - Support escalation and daily payment reconciliation.
+  - An incident runbook for each alert.
+
+### Database changes
+
+Migration `20261127090000_analytics_operations`: `analytics_events`, `job_runs`,
+`users.profile_completed_at`. See `docs/DATABASE.md`.
+
+### APIs
+
+`GET /admin/metrics`, `GET /admin/system`, `GET /metrics` (token), `POST /client-errors`. New
+permissions `metrics.read` and `system.read`. `GET /trips/:id` now records `trip_viewed` for
+non-organisers. See `docs/API.md`, "Analytics, monitoring and crash reports".
+
+### New optional env keys
+
+`METRICS_TOKEN`, `ALERT_WEBHOOK_URL`, `ANALYTICS_HASH_KEY`, `ANALYTICS_RETENTION_DAYS`. All work
+when added; nothing breaks without them.
+
+### Tests
+
+- **End to end:** 15 new tests (279 in total). They cover:
+  - Sign-ups recorded under a pseudonymous key, never the user id.
+  - Properties outside the dictionary stripped, and invalid events dropped without failing the
+    request.
+  - Daily activity recorded once.
+  - Profile completion recorded once.
+  - A full trip, from creation through views (organisers not counted, once a day for others),
+    the join request, approval, start and completion.
+  - The metrics endpoint's permissions and values.
+  - System status, and job failures with recovery.
+  - Crash reports.
+  - Prometheus `/metrics` off without a token, and checking it with one.
+  - The retention job and the database limits on events.
+- **Unit:** scrubbing, percentiles, Prometheus rendering and India-time days (API, 82); the
+  event dictionary, metric schemas and permissions (shared, 57); the Metrics and System pages and
+  the error reporter (admin, 20); the crash reporter (mobile, 66).
+
+### Outstanding
+
+- **Native crash reporting:** crashes outside JavaScript (native modules, out-of-memory) are not
+  captured yet. They need Sentry or Crashlytics with their keys; deciding which is milestone 16.
+- **Hosted monitoring:** nothing hosted is set up yet: no Prometheus server, uptime checker, alert
+  channel or backup storage, because there is no production environment yet. The config and
+  scripts are ready for milestone 16's deployment. `scripts/backup.sh` needs a scheduler (cron or
+  the platform's scheduled jobs) and an off-site bucket.
+- Metrics are per process and reset on restart. That is fine for one instance; with several,
+  scrape each one, or move to a shared store later.
+- Business metrics are computed on request. With much more data they should come from a nightly
+  rollup table.
+- Account deletion itself is not built. The retention job already forgets the analytics events
+  of soft-deleted accounts.
+- The restore drill was run on development data only. Run it monthly against production backups
+  once they exist.
 
 ---
 

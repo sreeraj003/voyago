@@ -17,6 +17,7 @@ import {
 import { APP_CONFIG, type AppConfig } from '../config/app-config.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { AnalyticsService } from '../observability/analytics.service.js';
 import { randomToken, sha256Hex } from './crypto.js';
 import { EMAIL_SENDER, type EmailSender } from './delivery/email-sender.js';
 import { LoginAttemptsService } from './login-attempts.service.js';
@@ -54,6 +55,7 @@ export class AuthService {
     private readonly otp: OtpService,
     private readonly social: SocialTokenVerifier,
     private readonly loginAttempts: LoginAttemptsService,
+    private readonly analytics: AnalyticsService,
   ) {}
 
   methods(): AuthMethods {
@@ -102,6 +104,7 @@ export class AuthService {
         },
         select: { id: true },
       });
+      await this.analytics.track('account_registered', user.id, { method: 'email' });
       await this.sendVerificationEmail(user.id, input.email);
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
@@ -338,6 +341,10 @@ export class AuthService {
       await this.assertUsernameAvailable(account.username);
       throw new ConflictException('An account already exists for this sign-in. Sign in instead.');
     }
+    await this.analytics.track('account_registered', userId, {
+      method:
+        identity.kind === 'phone' ? 'phone' : identity.provider === 'APPLE' ? 'apple' : 'google',
+    });
     return this.sessions.signIn(userId, userAgent);
   }
 

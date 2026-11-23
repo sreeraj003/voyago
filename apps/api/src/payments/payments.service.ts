@@ -3,6 +3,7 @@ import { formatPaise, proportional } from '@voyago/shared';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { AnalyticsService } from '../observability/analytics.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import {
   type GatewayPayment,
@@ -44,6 +45,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly gateway: PaymentGateway,
     private readonly notifications: NotificationsService,
+    private readonly analytics: AnalyticsService,
   ) {}
 
   // ── Payments ──────────────────────────────────────────────────────────────
@@ -163,6 +165,16 @@ export class PaymentsService {
         initiator: 'SYSTEM',
         reason: 'Paid after the booking was cancelled or its hold expired',
         key: `late:${gp.id}`,
+      });
+    }
+    if (result === 'confirmed' || result === 'late_confirmed') {
+      const booking = await this.prisma.booking.findUniqueOrThrow({
+        where: { id: bookingId },
+        select: { userId: true, seats: true, totalAmountPaise: true },
+      });
+      await this.analytics.track('booking_confirmed', booking.userId, {
+        seats: booking.seats,
+        amountPaise: booking.totalAmountPaise,
       });
     }
     return result;

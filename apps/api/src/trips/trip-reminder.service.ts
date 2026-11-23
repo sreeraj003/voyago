@@ -1,6 +1,7 @@
-import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { JobMonitor } from '../observability/job-monitor.service.js';
 
 /** Members are reminded once, this long before departure. */
 export const REMINDER_LEAD_MS = 24 * 60 * 60 * 1000;
@@ -12,17 +13,21 @@ const INTERVAL_MS = 15 * 60 * 1000;
  */
 @Injectable()
 export class TripReminderService implements OnModuleInit, OnModuleDestroy {
-  private readonly logger = new Logger(TripReminderService.name);
   private timer: NodeJS.Timeout | undefined;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly jobs: JobMonitor,
   ) {}
 
   onModuleInit(): void {
-    this.timer = setInterval(() => void this.runSafely(), INTERVAL_MS);
-    this.timer.unref();
+    this.timer = this.jobs.every(
+      'trip-reminders',
+      'Sends the day-before reminder for trips departing in 24 hours',
+      INTERVAL_MS,
+      () => this.sendDue(),
+    );
   }
 
   onModuleDestroy(): void {
@@ -54,13 +59,5 @@ export class TripReminderService implements OnModuleInit, OnModuleDestroy {
       );
     }
     return claimed.length;
-  }
-
-  private async runSafely(): Promise<void> {
-    try {
-      await this.sendDue();
-    } catch (error) {
-      this.logger.warn(`Trip reminders failed: ${(error as Error).message}`);
-    }
   }
 }

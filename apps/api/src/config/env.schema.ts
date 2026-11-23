@@ -156,6 +156,23 @@ export const EnvSchema = z
       .enum(['true', 'false'])
       .default('true')
       .transform((v) => v === 'true'),
+
+    // ── Analytics and operations (milestone 15) ────────────────────────────────
+    /**
+     * Key for the pseudonymous actor key on analytics events (HMAC of the user id). Optional: when
+     * empty it is derived from OTP_HMAC_SECRET. Changing it starts new actor keys, which breaks
+     * retention figures across the change.
+     */
+    ANALYTICS_HASH_KEY: z.union([z.literal(''), z.string().min(32)]).default(''),
+    /** Days analytics events are kept before the retention job deletes them. */
+    ANALYTICS_RETENTION_DAYS: z.coerce.number().int().min(30).max(1095).default(400),
+    /** Bearer token for GET /metrics (Prometheus). Empty: the endpoint answers 404. */
+    METRICS_TOKEN: z.union([z.literal(''), z.string().min(24)]).default(''),
+    /**
+     * Incoming webhook (Slack-compatible, `{ text }`) for alerts: server errors, failing jobs,
+     * payment webhooks that could not be applied. Empty: alerts are only logged.
+     */
+    ALERT_WEBHOOK_URL: z.union([z.literal(''), z.url({ protocol: /^https$/ })]).default(''),
   })
   .superRefine((env, ctx) => {
     const cloudinary = [

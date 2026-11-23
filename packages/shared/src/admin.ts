@@ -38,6 +38,10 @@ export const ADMIN_PERMISSIONS = [
   'payments.read',
   /** Refund, retry refunds and reconcile with the payment provider. */
   'payments.manage',
+  /** Business metrics: growth, engagement, revenue (aggregates only). */
+  'metrics.read',
+  /** System status: dependencies, latency, background jobs, webhook and moderation backlogs. */
+  'system.read',
 ] as const;
 export type AdminPermission = (typeof ADMIN_PERMISSIONS)[number];
 export const AdminPermissionSchema = z.enum(ADMIN_PERMISSIONS);
@@ -53,7 +57,14 @@ export const PERMISSIONS_BY_ROLE: Record<StaffRole, readonly AdminPermission[]> 
     'reports.read',
     'reports.manage',
   ],
-  SUPPORT: ['dashboard.view', 'users.read', 'trips.read', 'reports.read', 'payments.read'],
+  SUPPORT: [
+    'dashboard.view',
+    'users.read',
+    'trips.read',
+    'reports.read',
+    'payments.read',
+    'system.read',
+  ],
   OPERATIONS: [
     'dashboard.view',
     'users.read',
@@ -63,6 +74,8 @@ export const PERMISSIONS_BY_ROLE: Record<StaffRole, readonly AdminPermission[]> 
     'operators.documents',
     'payments.read',
     'payments.manage',
+    'metrics.read',
+    'system.read',
   ],
 };
 

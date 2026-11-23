@@ -28,6 +28,7 @@ import { RealtimeService } from '../chat/realtime.service.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { CloudinaryService } from '../integrations/cloudinary.service.js';
+import { AnalyticsService } from '../observability/analytics.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { postInclude, PostsService } from '../posts/posts.service.js';
 import { blockedIds, isBlockedEitherWay } from '../social/blocks.js';
@@ -64,6 +65,7 @@ export class CommunitiesService {
     private readonly notifications: NotificationsService,
     private readonly posts: PostsService,
     private readonly realtime: RealtimeService,
+    private readonly analytics: AnalyticsService,
   ) {}
 
   async create(user: AuthUser, input: z.output<typeof CreateCommunitySchema>): Promise<Community> {
@@ -235,6 +237,7 @@ export class CommunitiesService {
         });
       }
     });
+    await this.analytics.track('community_joined', user.id, { pending: !open });
     return this.get(user, slug);
   }
 

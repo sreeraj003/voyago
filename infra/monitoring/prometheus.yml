@@ -1,0 +1,39 @@
+# Prometheus scrape configuration for the Voyago API. See docs/OPERATIONS.md, "Monitoring".
+#
+# The API serves metrics at /api/v1/metrics only when METRICS_TOKEN is set, and only to requests
+# carrying `Authorization: Bearer <METRICS_TOKEN>`. Put the same token in the file named below
+# (mounted as a secret, never committed).
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+rule_files:
+  - alerts.yml
+
+scrape_configs:
+  - job_name: voyago-api
+    metrics_path: /api/v1/metrics
+    scheme: https
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/voyago-metrics-token
+    static_configs:
+      # Replace with each API instance (or use your platform's service discovery).
+      - targets: ['api.example.invalid:443']
+
+  # Uptime from outside: needs the Prometheus blackbox exporter with an `http_2xx` module.
+  - job_name: voyago-uptime
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - https://api.example.invalid/api/v1/health/live
+          - https://api.example.invalid/api/v1/health/ready
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter:9115

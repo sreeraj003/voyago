@@ -23,6 +23,7 @@ import {
   AdminSubscriptionSchema,
   type AdminSubscriptionsQuery,
   AuditPageSchema,
+  BusinessMetricsSchema,
   type AuditQuery,
   DashboardSchema,
   DocumentLinkSchema,
@@ -31,6 +32,7 @@ import {
   type ReviewDocumentInput,
   type SetOperatorStatusInput,
   type SetRoleInput,
+  SystemStatusSchema,
   StaffPersonSchema,
   type TriageReportInput,
   type UpdatePlanInput,
@@ -54,6 +56,9 @@ const post = <T>(path: string, body: unknown, schema: z.ZodType<T>) =>
 export const adminApi = {
   me: (): Promise<AdminMe> => api('/admin/me', { schema: AdminMeSchema }),
   dashboard: () => api('/admin/dashboard', { schema: DashboardSchema }),
+  metrics: (days: number) =>
+    api(`/admin/metrics${qs({ days })}`, { schema: BusinessMetricsSchema }),
+  system: () => api('/admin/system', { schema: SystemStatusSchema }),
   staff: () => api('/admin/staff', { schema: z.array(StaffPersonSchema) }),
   audit: (query: AuditQuery) =>
     api(`/admin/audit${qs(query)}`, { schema: AuditPageSchema, envelope: 'whole' }),

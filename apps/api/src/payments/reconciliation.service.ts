@@ -2,6 +2,7 @@ import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@ne
 import { PrismaService } from '../database/prisma.service.js';
 import { PaymentGateway } from './payment-gateway.js';
 import { type ApplyResult, PaymentsService } from './payments.service.js';
+import { JobMonitor } from '../observability/job-monitor.service.js';
 
 const INTERVAL_MS = 60_000;
 /** A refund still pending after this long is checked with the provider. */
@@ -28,11 +29,16 @@ export class ReconciliationService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly gateway: PaymentGateway,
     private readonly payments: PaymentsService,
+    private readonly jobs: JobMonitor,
   ) {}
 
   onModuleInit(): void {
-    this.timer = setInterval(() => void this.runSafely(), INTERVAL_MS);
-    this.timer.unref();
+    this.timer = this.jobs.every(
+      'payment-reconciliation',
+      'Reconciles pending payments with the provider and releases lapsed holds',
+      INTERVAL_MS,
+      () => this.sweep(),
+    );
   }
 
   onModuleDestroy(): void {
@@ -117,13 +123,5 @@ export class ReconciliationService implements OnModuleInit, OnModuleDestroy {
       where: { status: 'CONFIRMED', package: { endsAt: { lt: now } } },
       data: { status: 'COMPLETED' },
     });
-  }
-
-  private async runSafely(): Promise<void> {
-    try {
-      await this.sweep();
-    } catch (error) {
-      this.logger.warn(`Payment sweep failed: ${(error as Error).message}`);
-    }
   }
 }

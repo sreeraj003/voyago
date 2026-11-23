@@ -1,12 +1,7 @@
-import {
-  Inject,
-  Injectable,
-  Logger,
-  type OnModuleDestroy,
-  type OnModuleInit,
-} from '@nestjs/common';
+import { Inject, Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service.js';
 import { type PushMessage, PUSH_SENDER, type PushSender } from './push-sender.js';
+import { JobMonitor } from '../../observability/job-monitor.service.js';
 
 const INTERVAL_MS = 2_000;
 const BATCH = 200;
@@ -30,19 +25,23 @@ interface Claimed {
  */
 @Injectable()
 export class PushDispatcherService implements OnModuleInit, OnModuleDestroy {
-  private readonly logger = new Logger(PushDispatcherService.name);
   private timer: NodeJS.Timeout | undefined;
-  private running = false;
 
   constructor(
     private readonly prisma: PrismaService,
     @Inject(PUSH_SENDER) private readonly sender: PushSender,
+    private readonly jobs: JobMonitor,
   ) {}
 
   onModuleInit(): void {
     if (!this.sender.enabled) return;
-    this.timer = setInterval(() => void this.runSafely(), INTERVAL_MS);
-    this.timer.unref();
+    // The monitor skips a tick while the previous drain is still going.
+    this.timer = this.jobs.every(
+      'push-delivery',
+      'Sends push notifications for new notifications',
+      INTERVAL_MS,
+      () => this.drain(),
+    );
   }
 
   onModuleDestroy(): void {
@@ -98,17 +97,9 @@ export class PushDispatcherService implements OnModuleInit, OnModuleDestroy {
     return claimed.length;
   }
 
-  private async runSafely(): Promise<void> {
-    if (this.running) return;
-    this.running = true;
-    try {
-      while ((await this.runOnce()) > 0) {
-        // Drain a backlog before waiting for the next tick.
-      }
-    } catch (error) {
-      this.logger.warn(`Push delivery failed: ${(error as Error).message}`);
-    } finally {
-      this.running = false;
+  private async drain(): Promise<void> {
+    while ((await this.runOnce()) > 0) {
+      // Drain a backlog before waiting for the next tick.
     }
   }
 }

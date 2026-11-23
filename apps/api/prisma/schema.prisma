@@ -437,38 +437,40 @@ enum AuditActorType {
 
 /// A registered member. Contact details (email, phone) are private and never public.
 model User {
-  id              String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                 String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// Case-insensitive unique handle.
-  username        String     @unique @db.Citext
+  username           String     @unique @db.Citext
   /// Case-insensitive unique; private.
-  email           String?    @unique @db.Citext
+  email              String?    @unique @db.Citext
   /// E.164 format; private.
-  phone           String?    @unique @db.VarChar(16)
+  phone              String?    @unique @db.VarChar(16)
   /// Argon2/bcrypt hash set in milestone 04. Never the password itself.
-  passwordHash    String?    @map("password_hash")
-  emailVerifiedAt DateTime?  @map("email_verified_at") @db.Timestamptz(3)
-  phoneVerifiedAt DateTime?  @map("phone_verified_at") @db.Timestamptz(3)
-  displayName     String     @map("display_name") @db.VarChar(80)
-  bio             String?    @db.VarChar(500)
+  passwordHash       String?    @map("password_hash")
+  emailVerifiedAt    DateTime?  @map("email_verified_at") @db.Timestamptz(3)
+  phoneVerifiedAt    DateTime?  @map("phone_verified_at") @db.Timestamptz(3)
+  displayName        String     @map("display_name") @db.VarChar(80)
+  bio                String?    @db.VarChar(500)
   /// Object-storage key, not a URL.
-  avatarKey       String?    @map("avatar_key")
+  avatarKey          String?    @map("avatar_key")
   /// Public, city-level only. Exact home location is never stored.
-  homeCity        String?    @map("home_city") @db.VarChar(80)
+  homeCity           String?    @map("home_city") @db.VarChar(80)
   /// ISO 3166-1 alpha-2 country code.
-  country         String     @default("IN") @db.Char(2)
+  country            String     @default("IN") @db.Char(2)
   /// ISO 639-1 language codes, e.g. ["en", "kn", "hi"].
-  languages       String[]   @default([])
-  role            UserRole   @default(USER)
-  status          UserStatus @default(ACTIVE)
-  lastActiveAt    DateTime?  @map("last_active_at") @db.Timestamptz(3)
-  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  languages          String[]   @default([])
+  role               UserRole   @default(USER)
+  status             UserStatus @default(ACTIVE)
+  lastActiveAt       DateTime?  @map("last_active_at") @db.Timestamptz(3)
+  /// First time the profile was filled in (bio, home city, a language, an interest).
+  profileCompletedAt DateTime?  @map("profile_completed_at") @db.Timestamptz(3)
+  createdAt          DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
   /// Soft delete; personal fields are scrubbed by the account-deletion job.
-  deletedAt       DateTime?  @map("deleted_at") @db.Timestamptz(3)
+  deletedAt          DateTime?  @map("deleted_at") @db.Timestamptz(3)
   /// Profile accent colour (a paid feature; hidden while the plan is not active).
-  accentColor     String?    @map("accent_color") @db.VarChar(20)
+  accentColor        String?    @map("accent_color") @db.VarChar(20)
   /// Organiser headline (Organiser Pro; hidden while the plan is not active).
-  profileHeadline String?    @map("profile_headline") @db.VarChar(120)
+  profileHeadline    String?    @map("profile_headline") @db.VarChar(120)
 
   preferences         UserPreference?
   motorcycles         Motorcycle[]
@@ -1592,4 +1594,57 @@ model SavedSearch {
   @@unique([userId, name])
   @@index([alerts])
   @@map("saved_searches")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Analytics and operations (milestone 15)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The event dictionary is in packages/shared/src/analytics.ts.
+enum AnalyticsEventName {
+  account_registered
+  profile_completed
+  trip_created
+  trip_published
+  trip_viewed
+  join_requested
+  join_approved
+  trip_started
+  trip_completed
+  trip_cancelled
+  community_joined
+  booking_started
+  booking_confirmed
+  subscription_started
+  user_active
+}
+
+/// A product event. No user id: `actorKey` is a keyed hash of it, so events can be counted per
+/// person (retention, repeat organisers) without saying who. Properties are whitelisted per event.
+model AnalyticsEvent {
+  id         String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name       AnalyticsEventName
+  actorKey   String?            @map("actor_key") @db.Char(32)
+  properties Json               @default("{}")
+  occurredAt DateTime           @default(now()) @map("occurred_at") @db.Timestamptz(3)
+
+  @@index([name, occurredAt])
+  @@index([actorKey, occurredAt])
+  @@index([occurredAt])
+  @@map("analytics_events")
+}
+
+/// The last runs of each background job, for the system status page and alerts.
+model JobRun {
+  name                String    @id @db.VarChar(60)
+  lastStartedAt       DateTime? @map("last_started_at") @db.Timestamptz(3)
+  lastSuccessAt       DateTime? @map("last_success_at") @db.Timestamptz(3)
+  lastError           String?   @map("last_error") @db.VarChar(500)
+  lastErrorAt         DateTime? @map("last_error_at") @db.Timestamptz(3)
+  consecutiveFailures Int       @default(0) @map("consecutive_failures")
+  runs                Int       @default(0)
+  failures            Int       @default(0)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("job_runs")
 }

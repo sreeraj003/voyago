@@ -5,10 +5,12 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { type ApiError } from '@voyago/shared';
 import type { Request, Response } from 'express';
 import { Prisma } from '../../generated/prisma/client.js';
+import { AlertsService } from '../../observability/alerts.service.js';
 
 type Mapped = { statusCode: number; message: string; details?: ApiError['details'] };
 
@@ -25,6 +27,8 @@ type Mapped = { statusCode: number; message: string; details?: ApiError['details
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
 
+  constructor(@Optional() private readonly alerts?: AlertsService) {}
+
   catch(exception: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();
     const request = http.getRequest<Request>();
@@ -36,6 +40,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
       this.logger.error(
         { err: exception, requestId: body.requestId },
         'Unhandled error while processing request',
+      );
+      // At most one alert per quiet window; the request id leads to the log line.
+      void this.alerts?.raise(
+        'server-error',
+        `Server error on ${request.method} ${body.path} (request ${body.requestId ?? 'unknown'})`,
       );
     } else if (isPrismaError(exception)) {
       this.logger.warn(

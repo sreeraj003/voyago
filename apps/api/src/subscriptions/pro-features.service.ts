@@ -30,6 +30,7 @@ import { Prisma } from '../generated/prisma/client.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { ParticipationService } from '../participation/participation.service.js';
 import { EntitlementsService } from './entitlements.service.js';
+import { JobMonitor } from '../observability/job-monitor.service.js';
 
 const ALERT_SWEEP_MS = 60 * 60_000;
 /** Saved queries never carry paging; it comes from the request that runs them. */
@@ -94,11 +95,16 @@ export class ProFeaturesService implements OnModuleInit, OnModuleDestroy {
     private readonly discovery: DiscoveryService,
     private readonly participation: ParticipationService,
     private readonly notifications: NotificationsService,
+    private readonly jobs: JobMonitor,
   ) {}
 
   onModuleInit(): void {
-    this.timer = setInterval(() => void this.alertSafely(), ALERT_SWEEP_MS);
-    this.timer.unref();
+    this.timer = this.jobs.every(
+      'saved-search-alerts',
+      'Sends new-trip alerts for saved searches',
+      ALERT_SWEEP_MS,
+      () => this.sendAlerts(),
+    );
   }
 
   onModuleDestroy(): void {
@@ -268,14 +274,6 @@ export class ProFeaturesService implements OnModuleInit, OnModuleDestroy {
       });
     }
     return sent;
-  }
-
-  private async alertSafely() {
-    try {
-      await this.sendAlerts();
-    } catch (error) {
-      this.logger.warn(`Saved-search alerts failed: ${(error as Error).message}`);
-    }
   }
 
   // ── Travel stats ──────────────────────────────────────────────────────────

@@ -22,6 +22,7 @@ import { CommercialModule } from './commercial/commercial.module.js';
 import { CommunitiesModule } from './communities/communities.module.js';
 import { DiscoveryModule } from './discovery/discovery.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
+import { ObservabilityModule } from './observability/observability.module.js';
 import { ParticipationModule } from './participation/participation.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
 import { PostsModule } from './posts/posts.module.js';
@@ -88,6 +89,7 @@ export class AppModule {
         PrismaModule,
         RedisModule,
         HealthModule,
+        ObservabilityModule,
         IntegrationsModule,
         NotificationsModule,
         AuthModule,

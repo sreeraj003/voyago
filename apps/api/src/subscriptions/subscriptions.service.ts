@@ -25,6 +25,7 @@ import { APP_CONFIG, type AppConfig } from '../config/app-config.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { AnalyticsService } from '../observability/analytics.service.js';
 import { CheckoutTokens } from '../payments/checkout-tokens.js';
 import { type RazorpayWebhook, PaymentEventsService } from '../payments/payment-events.service.js';
 import {
@@ -35,6 +36,7 @@ import {
   PaymentProviderError,
 } from '../payments/payment-gateway.js';
 import { isEntitled } from './entitlements.service.js';
+import { JobMonitor } from '../observability/job-monitor.service.js';
 
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -102,12 +104,18 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
     private readonly notifications: NotificationsService,
     private readonly events: PaymentEventsService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    private readonly analytics: AnalyticsService,
+    private readonly jobs: JobMonitor,
   ) {}
 
   onModuleInit(): void {
     this.events.onSubscriptionEvent((type, body) => this.applyWebhook(type, body));
-    this.timer = setInterval(() => void this.runSafely(), SWEEP_MS);
-    this.timer.unref();
+    this.timer = this.jobs.every(
+      'subscription-sweep',
+      'Sends renewal reminders and ends lapsed subscriptions',
+      SWEEP_MS,
+      () => this.sweep(),
+    );
   }
 
   onModuleDestroy(): void {
@@ -408,7 +416,8 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
     gs: GatewaySubscription,
     gp: GatewayPayment | null,
   ): Promise<string> {
-    return this.prisma.$transaction(async (tx) => {
+    let started: SubscriptionRow | null = null;
+    const result = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT "id" FROM "subscriptions" WHERE "id" = ${subscriptionId}::uuid FOR UPDATE`;
       const sub = await tx.subscription.findUniqueOrThrow({
         where: { id: subscriptionId },
@@ -481,6 +490,7 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
 
       const end = (data.currentPeriodEnd as Date | undefined)?.getTime() ?? before.end;
       if (before.status === 'PENDING' && status === 'ACTIVE') {
+        started = sub;
         await this.notifications.notify(tx, [sub.userId], {
           type: 'PAYMENT_UPDATE',
           title: `${sub.plan.name} is on`,
@@ -499,6 +509,14 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
       if (status === before.status && end === before.end) return 'unchanged';
       return status.toLowerCase();
     });
+    const first = started as SubscriptionRow | null;
+    if (first && (first.plan.tier === 'EXPLORER_PRO' || first.plan.tier === 'ORGANISER_PRO')) {
+      await this.analytics.track('subscription_started', first.userId, {
+        tier: first.plan.tier,
+        pricePaise: first.pricePaise,
+      });
+    }
+    return result;
   }
 
   /** One provider payment on the subscription, stored once (unique per provider payment id). */
@@ -697,14 +715,6 @@ export class SubscriptionsService implements OnModuleInit, OnModuleDestroy {
           : {}),
       },
     });
-  }
-
-  private async runSafely() {
-    try {
-      await this.sweep();
-    } catch (error) {
-      this.logger.warn(`Subscription sweep failed: ${(error as Error).message}`);
-    }
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────

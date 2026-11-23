@@ -19,3 +19,4 @@ export * from './admin.js';
 export * from './commercial.js';
 export * from './bookings.js';
 export * from './subscriptions.js';
+export * from './analytics.js';

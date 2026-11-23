@@ -57,7 +57,7 @@ export class TripsController {
   })
   @ApiErrorResponses(400, 404)
   async get(@CurrentUser() user: AuthUser, @Param('id', idPipe) id: string) {
-    return { data: await this.trips.get(user, id) };
+    return { data: await this.trips.view(user, id) };
   }
 
   @Patch('trips/:id')

@@ -1,5 +1,6 @@
-import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Injectable, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { SafetyService } from './safety.service.js';
+import { JobMonitor } from '../observability/job-monitor.service.js';
 
 const INTERVAL_MS = 30_000;
 
@@ -10,25 +11,23 @@ const INTERVAL_MS = 30_000;
  */
 @Injectable()
 export class SafetySweepService implements OnModuleInit, OnModuleDestroy {
-  private readonly logger = new Logger(SafetySweepService.name);
   private timer: NodeJS.Timeout | undefined;
 
-  constructor(private readonly safety: SafetyService) {}
+  constructor(
+    private readonly safety: SafetyService,
+    private readonly jobs: JobMonitor,
+  ) {}
 
   onModuleInit(): void {
-    this.timer = setInterval(() => void this.runSafely(), INTERVAL_MS);
-    this.timer.unref();
+    this.timer = this.jobs.every(
+      'safety-sweep',
+      'Ends expired live-location sessions and clears old SOS locations',
+      INTERVAL_MS,
+      () => this.safety.sweep(),
+    );
   }
 
   onModuleDestroy(): void {
     clearInterval(this.timer);
-  }
-
-  private async runSafely(): Promise<void> {
-    try {
-      await this.safety.sweep();
-    } catch (error) {
-      this.logger.warn(`Safety sweep failed: ${(error as Error).message}`);
-    }
   }
 }

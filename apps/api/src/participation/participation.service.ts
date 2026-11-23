@@ -20,6 +20,7 @@ import { RealtimeService } from '../chat/realtime.service.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { AnalyticsService } from '../observability/analytics.service.js';
 import { canManagePeople, isStaff } from '../trips/trip-view.js';
 import { syncCapacityStatus, TripsService } from '../trips/trips.service.js';
 
@@ -54,6 +55,7 @@ export class ParticipationService {
     private readonly trips: TripsService,
     private readonly notifications: NotificationsService,
     private readonly realtime: RealtimeService,
+    private readonly analytics: AnalyticsService,
   ) {}
 
   /** Ask to join; trips that don't need approval are joined at once. */
@@ -105,6 +107,13 @@ export class ParticipationService {
       }
       return created.id;
     });
+    await this.analytics.track('join_requested', user.id, {
+      mode: trip.mode,
+      approvalRequired: trip.approvalRequired,
+    });
+    if (!trip.approvalRequired) {
+      await this.analytics.track('join_approved', user.id, { mode: trip.mode, automatic: true });
+    }
     return this.getRequest(requestId);
   }
 
@@ -117,6 +126,11 @@ export class ParticipationService {
           joinRequestId: requestId,
         });
       }
+    });
+    // The event belongs to the member who got in, like an automatic join.
+    await this.analytics.track('join_approved', request.userId, {
+      mode: request.trip.mode,
+      automatic: false,
     });
     return this.getRequest(requestId);
   }
@@ -589,7 +603,7 @@ export class ParticipationService {
   private async loadForDecision(user: AuthUser, requestId: string) {
     const request = await this.prisma.tripJoinRequest.findUnique({
       where: { id: requestId },
-      include: { trip: { select: { organiserId: true, title: true } } },
+      include: { trip: { select: { organiserId: true, title: true, mode: true } } },
     });
     if (!request) throw new NotFoundException('Request not found');
     if (request.userId === user.id) {

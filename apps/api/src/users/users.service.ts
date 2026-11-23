@@ -18,6 +18,7 @@ import {
 } from '@voyago/shared';
 import { type z } from 'zod';
 import { directMessageAllowed } from '../chat/message-permission.js';
+import { AnalyticsService } from '../observability/analytics.service.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { EntitlementsService } from '../subscriptions/entitlements.service.js';
 
@@ -63,6 +64,7 @@ export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly entitlements: EntitlementsService,
+    private readonly analytics: AnalyticsService,
   ) {}
 
   async getOwnProfile(userId: string): Promise<PrivateProfile> {
@@ -98,7 +100,27 @@ export class UsersService {
       if (taken) throw new ConflictException('This username is taken');
     }
     await this.prisma.user.update({ where: { id: userId }, data: input });
+    await this.markProfileCompleted(userId);
     return this.getOwnProfile(userId);
+  }
+
+  /**
+   * The first time a profile has a bio, a home city, a language and an interest, stamp
+   * `profile_completed_at` and record `profile_completed`. The conditional update makes it once.
+   */
+  private async markProfileCompleted(userId: string): Promise<void> {
+    const { count } = await this.prisma.user.updateMany({
+      where: {
+        id: userId,
+        profileCompletedAt: null,
+        bio: { not: null },
+        homeCity: { not: null },
+        NOT: [{ bio: '' }, { languages: { isEmpty: true } }],
+        preferences: { is: { NOT: { interests: { isEmpty: true } } } },
+      },
+      data: { profileCompletedAt: new Date() },
+    });
+    if (count === 1) await this.analytics.track('profile_completed', userId, {});
   }
 
   async getPublicProfile(viewerId: string, username: string): Promise<PublicProfile> {
@@ -236,11 +258,13 @@ export class UsersService {
     ) {
       throw rangeError('groupSizeMin', 'Minimum group size must not exceed maximum');
     }
-    return this.prisma.userPreference.update({
+    const updated = await this.prisma.userPreference.update({
       where: { userId },
       data: input,
       select: preferenceSelect,
     });
+    await this.markProfileCompleted(userId);
+    return updated;
   }
 
   listMotorcycles(userId: string): Promise<Motorcycle[]> {

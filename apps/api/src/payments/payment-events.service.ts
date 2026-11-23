@@ -10,6 +10,8 @@ import {
   PaymentGateway,
 } from './payment-gateway.js';
 import { PaymentsService } from './payments.service.js';
+import { AlertsService } from '../observability/alerts.service.js';
+import { MetricsRegistry } from '../observability/metrics.registry.js';
 
 export type RazorpayWebhook = {
   event?: string;
@@ -71,6 +73,8 @@ export class PaymentEventsService {
     private readonly prisma: PrismaService,
     private readonly gateway: PaymentGateway,
     private readonly payments: PaymentsService,
+    private readonly metrics: MetricsRegistry,
+    private readonly alerts: AlertsService,
   ) {}
 
   async razorpayWebhook(
@@ -101,6 +105,7 @@ export class PaymentEventsService {
         },
       });
       this.logger.warn(`Rejected a ${this.gateway.name} webhook with a bad signature`);
+      this.count('invalid_signature');
       return { status: 'invalid' };
     }
     const id = (
@@ -108,14 +113,28 @@ export class PaymentEventsService {
       `${eventType}:${body.payload?.payment?.entity?.id ?? body.payload?.refund?.entity?.id ?? randomUUID()}`
     ).slice(0, 120);
     const recorded = await this.record(id, eventType, body);
-    if (recorded === 'duplicate') return { status: 'duplicate' };
+    if (recorded === 'duplicate') {
+      this.count('duplicate');
+      return { status: 'duplicate' };
+    }
     let result: string;
     let subscriptionId: string | null = null;
-    if (eventType.startsWith('subscription.') && this.subscriptionHandler) {
-      ({ result, subscriptionId } = await this.subscriptionHandler(eventType, body));
-    } else {
-      result = await this.apply(eventType, body);
+    try {
+      if (eventType.startsWith('subscription.') && this.subscriptionHandler) {
+        ({ result, subscriptionId } = await this.subscriptionHandler(eventType, body));
+      } else {
+        result = await this.apply(eventType, body);
+      }
+    } catch (error) {
+      // Left unprocessed: the provider retries, and /admin/system shows it as stuck meanwhile.
+      this.count('failed');
+      await this.alerts.raise(
+        'payment-webhook',
+        `A ${this.gateway.name} ${eventType} webhook could not be applied: ${(error as Error).message.slice(0, 200)}`,
+      );
+      throw error;
     }
+    this.count(result === 'ignored' ? 'ignored' : 'processed');
     await this.prisma.paymentEvent.update({
       where: { provider_eventId: { provider: this.gateway.name, eventId: id } },
       data: {
@@ -126,6 +145,15 @@ export class PaymentEventsService {
       },
     });
     return { status: result === 'ignored' ? 'ignored' : 'processed', result };
+  }
+
+  private count(outcome: string) {
+    this.metrics.inc(
+      'payment_webhooks_total',
+      { provider: this.gateway.name, outcome },
+      1,
+      'Payment provider webhooks by outcome',
+    );
   }
 
   /** Records the checkout's return (signature already verified) for the booking's history. */

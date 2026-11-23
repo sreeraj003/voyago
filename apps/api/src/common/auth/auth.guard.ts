@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { SessionService } from '../../auth/session.service.js';
+import { AnalyticsService } from '../../observability/analytics.service.js';
 import { TokenService } from '../../auth/token.service.js';
 import { type RequestWithUser } from './current-user.decorator.js';
 import { IS_PUBLIC_KEY } from './public.decorator.js';
@@ -24,6 +25,7 @@ export class AuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly tokens: TokenService,
     private readonly sessions: SessionService,
+    private readonly analytics: AnalyticsService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -43,6 +45,8 @@ export class AuthGuard implements CanActivate {
       throw new UnauthorizedException('Session ended. Sign in again.');
     }
     request.user = { id: user.id, role: user.role, sessionFamilyId: claims.sessionFamilyId };
+    // Once a day per member: last active time and the `user_active` event. Never blocks.
+    void this.analytics.active(user.id);
     return true;
   }
 }

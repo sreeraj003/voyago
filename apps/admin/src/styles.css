@@ -429,3 +429,11 @@ blockquote {
   align-items: center;
   gap: 6px;
 }
+
+.hbar {
+  display: block;
+  height: 0.6rem;
+  min-width: 2px;
+  border-radius: 3px;
+  background: var(--accent);
+}

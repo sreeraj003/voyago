@@ -614,6 +614,20 @@ and `tripId` when there is exactly one).
 3. Add the `subscription.*` events to the Razorpay webhook. Razorpay plans are created by the API
    the first time someone subscribes at a price; nothing has to be set up by hand.
 
+### Analytics, monitoring and crash reports
+
+Event and metric definitions: `docs/ANALYTICS.md`. Monitoring, alerts and runbooks:
+`docs/OPERATIONS.md`.
+
+| Method | Path             | Access                 | Description                                                                                                                                                                                                                                         |
+| ------ | ---------------- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/admin/metrics` | `metrics.read`         | `?days=` 7 to 365 (default 30). North Star by month, DAU/MAU, sign-up conversion, profile completion, 30-day retention, trip rates, GMV, commission, MRR, refunds, payment success, contribution margin, event counts. Aggregates only.             |
+| GET    | `/admin/system`  | `system.read`          | Version, uptime, database and Redis probes with latency, request count, 5xx count, p50/p95 and the slowest routes, background jobs, stuck or failed payment events, moderation SLA, crash reports in 24 hours.                                      |
+| GET    | `/metrics`       | `Bearer METRICS_TOKEN` | Prometheus text. 404 when `METRICS_TOKEN` is unset, 401 with a wrong token. Not in Swagger.                                                                                                                                                         |
+| POST   | `/client-errors` | Public, 20 a minute    | `{ platform: ios\|android\|web\|admin, appVersion, message (1–500), stack? (≤ 4000), fatal?, route? (pattern, ≤ 120) }`. 204. Scrubbed of emails, phone numbers, ids, tokens, coordinates and query strings before logging; no account is attached. |
+
+Product events are recorded by the API itself; there is no endpoint for apps to send events.
+
 ### Admin and moderation (`/api/v1/admin`)
 
 Staff only. Every route declares a permission and is checked on the server against the caller's
@@ -634,6 +648,8 @@ buttons by the same table, but that is never the authorization.
 | `operators.verify`    | yes         |           |         | yes        |
 | `operators.documents` | yes         |           |         | yes        |
 | `audit.read`          | yes         |           |         |            |
+| `metrics.read`        | yes         |           |         | yes        |
+| `system.read`         | yes         |           | yes     | yes        |
 
 | Method | Path                                           | Permission            | Description                                                                                                                                                         |
 | ------ | ---------------------------------------------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

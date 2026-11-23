@@ -1,5 +1,6 @@
 import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service.js';
+import { JobMonitor } from '../observability/job-monitor.service.js';
 
 /** Published trips that never started are expired this long after their departure time. */
 export const EXPIRY_GRACE_MS = 24 * 60 * 60 * 1000;
@@ -7,20 +8,26 @@ const INTERVAL_MS = 15 * 60 * 1000;
 
 /**
  * Moves PUBLISHED / FULL trips that were never started to EXPIRED and closes their pending
- * join requests. Runs every 15 minutes in
- * each API instance; the conditional update makes concurrent runs harmless. A dedicated job
- * runner replaces this in milestone 15.
+ * join requests. Runs every 15 minutes in each API instance through the job monitor (see
+ * /admin/system); the conditional update makes concurrent runs harmless.
  */
 @Injectable()
 export class TripExpiryService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TripExpiryService.name);
   private timer: NodeJS.Timeout | undefined;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jobs: JobMonitor,
+  ) {}
 
   onModuleInit(): void {
-    this.timer = setInterval(() => void this.runSafely(), INTERVAL_MS);
-    this.timer.unref();
+    this.timer = this.jobs.every(
+      'trip-expiry',
+      'Expires published trips that never started',
+      INTERVAL_MS,
+      () => this.expireOverdue(),
+    );
   }
 
   onModuleDestroy(): void {
@@ -46,13 +53,5 @@ export class TripExpiryService implements OnModuleInit, OnModuleDestroy {
       data: { status: 'CANCELLED', decidedAt: now },
     });
     return result.count;
-  }
-
-  private async runSafely(): Promise<void> {
-    try {
-      await this.expireOverdue();
-    } catch (error) {
-      this.logger.warn(`Trip expiry failed: ${(error as Error).message}`);
-    }
   }
 }

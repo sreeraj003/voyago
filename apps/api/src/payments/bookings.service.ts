@@ -26,6 +26,7 @@ import { decodeCursor, toPage } from '../common/pagination/cursor.js';
 import { APP_CONFIG, type AppConfig } from '../config/app-config.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { AnalyticsService } from '../observability/analytics.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { CheckoutTokens } from './checkout-tokens.js';
 import { PaymentGateway, PaymentProviderError } from './payment-gateway.js';
@@ -105,6 +106,7 @@ export class BookingsService {
     private readonly notifications: NotificationsService,
     private readonly tokens: CheckoutTokens,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    private readonly analytics: AnalyticsService,
   ) {}
 
   // ── Customer ──────────────────────────────────────────────────────────────
@@ -279,6 +281,10 @@ export class BookingsService {
         'Payments are not available right now. Try again shortly.',
       );
     }
+    await this.analytics.track('booking_started', userId, {
+      seats: input.seats,
+      amountPaise: total,
+    });
     return this.view(userId, ids.bookingId, returnUrl);
   }
 

@@ -29,6 +29,7 @@ import { PrismaService } from '../database/prisma.service.js';
 import { CloudinaryService } from '../integrations/cloudinary.service.js';
 import { GoogleMapsService } from '../integrations/google-maps.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
+import { AnalyticsService } from '../observability/analytics.service.js';
 import { geographyPoint, setPointSql } from '../database/geo.js';
 import { Prisma } from '../generated/prisma/client.js';
 import {
@@ -83,6 +84,7 @@ export class TripsService {
     private readonly maps: GoogleMapsService,
     private readonly cloudinary: CloudinaryService,
     private readonly notifications: NotificationsService,
+    private readonly analytics: AnalyticsService,
   ) {}
 
   async create(user: AuthUser, input: CreateInput): Promise<Trip> {
@@ -128,7 +130,24 @@ export class TripsService {
       return trip.id;
     });
     await this.refreshRoute(id);
+    await this.analytics.track('trip_created', user.id, {
+      mode: input.mode,
+      activityType: input.activityType,
+      tripType: 'COMMUNITY_FREE',
+    });
     return this.get(user, id);
+  }
+
+  /** The trip page: `get`, plus a `trip_viewed` event when someone other than its organisers opens it. */
+  async view(user: AuthUser, id: string): Promise<Trip> {
+    const trip = await this.get(user, id);
+    if (!trip.viewer.isOrganiser && !trip.viewer.isCoOrganiser) {
+      await this.analytics.tripViewed(user.id, id, {
+        mode: trip.mode,
+        participant: trip.viewer.isParticipant,
+      });
+    }
+    return trip;
   }
 
   async get(user: AuthUser, id: string): Promise<Trip> {
@@ -250,6 +269,11 @@ export class TripsService {
       await syncCapacityStatus(tx, id);
     });
     if (trip.routeComputedAt === null) await this.refreshRoute(id);
+    await this.analytics.track('trip_published', user.id, {
+      mode: trip.mode,
+      activityType: trip.activityType,
+      tripType: trip.tripType,
+    });
     return this.get(user, id);
   }
 
@@ -263,6 +287,11 @@ export class TripsService {
       await transition(tx, trip, 'IN_PROGRESS', { startedAt: new Date() });
       await closePendingRequests(tx, id);
     });
+    await this.analytics.track('trip_started', user.id, {
+      mode: trip.mode,
+      activityType: trip.activityType,
+      participants: await this.countOnTrip(id),
+    });
     return this.get(user, id);
   }
 
@@ -275,6 +304,11 @@ export class TripsService {
         where: { tripId: id, status: 'ACTIVE' },
         data: { status: 'COMPLETED' },
       });
+    });
+    await this.analytics.track('trip_completed', user.id, {
+      mode: trip.mode,
+      activityType: trip.activityType,
+      participants: await this.countOnTrip(id),
     });
     return this.get(user, id);
   }
@@ -319,7 +353,17 @@ export class TripsService {
         });
       }
     });
+    await this.analytics.track('trip_cancelled', user.id, {
+      mode: trip.mode,
+      by: isOrganiser ? 'organiser' : 'staff',
+    });
     return this.get(user, id);
+  }
+
+  private countOnTrip(tripId: string): Promise<number> {
+    return this.prisma.tripParticipant.count({
+      where: { tripId, status: { in: ON_TRIP } },
+    });
   }
 
   /** Drafts can be deleted; anything published is cancelled instead, so history is kept. */

@@ -1,0 +1,97 @@
+# Alert rules for the Voyago API. Thresholds match docs/OPERATIONS.md; tune them with real traffic.
+groups:
+  - name: voyago-availability
+    rules:
+      - alert: VoyagoApiDown
+        expr: probe_success{job="voyago-uptime"} == 0
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: 'Voyago API health check failing: {{ $labels.instance }}'
+          runbook: docs/OPERATIONS.md#api-down-or-503s
+
+      - alert: VoyagoDependencyDown
+        expr: dependency_up == 0
+        for: 2m
+        labels: { severity: page }
+        annotations:
+          summary: '{{ $labels.name }} is unreachable from the API'
+          runbook: docs/OPERATIONS.md#database-or-redis-down
+
+  - name: voyago-http
+    rules:
+      - alert: VoyagoHighServerErrorRate
+        expr: |
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(http_requests_total[5m])), 1) > 0.02
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: 'More than 2% of API requests are failing'
+          runbook: docs/OPERATIONS.md#error-spike
+
+      - alert: VoyagoSlowApi
+        expr: |
+          histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[10m]))) > 1.5
+        for: 10m
+        labels: { severity: ticket }
+        annotations:
+          summary: 'API p95 latency above 1.5 s'
+          runbook: docs/OPERATIONS.md#slow-api
+
+  - name: voyago-jobs
+    rules:
+      - alert: VoyagoJobFailing
+        expr: increase(job_runs_total{outcome="failure"}[30m]) >= 3
+        labels: { severity: ticket }
+        annotations:
+          summary: 'Background job {{ $labels.job }} keeps failing'
+          runbook: docs/OPERATIONS.md#background-job-failing
+
+      - alert: VoyagoJobStalled
+        expr: time() - job_last_success_timestamp_seconds{job=~"payment-reconciliation|safety-sweep"} > 900
+        labels: { severity: page }
+        annotations:
+          summary: '{{ $labels.job }} has not succeeded for 15 minutes'
+          runbook: docs/OPERATIONS.md#background-job-failing
+
+  - name: voyago-payments
+    rules:
+      - alert: VoyagoWebhookFailures
+        expr: increase(payment_webhooks_total{outcome="failed"}[15m]) > 0
+        labels: { severity: page }
+        annotations:
+          summary: 'Payment webhooks are failing to apply'
+          runbook: docs/OPERATIONS.md#payment-webhooks-failing
+
+      - alert: VoyagoInvalidWebhookSignatures
+        expr: increase(payment_webhooks_total{outcome="invalid_signature"}[1h]) > 10
+        labels: { severity: ticket }
+        annotations:
+          summary: 'Many payment webhooks with bad signatures (wrong secret, or someone probing)'
+          runbook: docs/OPERATIONS.md#payment-webhooks-failing
+
+      - alert: VoyagoStuckWebhooks
+        expr: payment_webhooks_stuck > 0
+        for: 15m
+        labels: { severity: page }
+        annotations:
+          summary: 'Provider events received but not applied'
+          runbook: docs/OPERATIONS.md#payment-webhooks-failing
+
+  - name: voyago-moderation-and-apps
+    rules:
+      - alert: VoyagoModerationOverdue
+        expr: moderation_reports_overdue > 0
+        for: 30m
+        labels: { severity: ticket }
+        annotations:
+          summary: '{{ $value }} reports are past their response target'
+          runbook: docs/OPERATIONS.md#moderation-sla
+
+      - alert: VoyagoCrashSpike
+        expr: sum(increase(client_errors_total{fatal="true"}[1h])) > 20
+        labels: { severity: ticket }
+        annotations:
+          summary: 'More than 20 app crashes in an hour'
+          runbook: docs/OPERATIONS.md#app-crash-spike

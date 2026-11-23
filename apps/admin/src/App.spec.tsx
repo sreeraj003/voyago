@@ -76,7 +76,7 @@ describe('App', () => {
       within(nav)
         .getAllByRole('link')
         .map((link) => link.textContent),
-    ).toEqual(['Overview', 'Reports', 'Members', 'Trips', 'Payments', 'Subscriptions']);
+    ).toEqual(['Overview', 'Reports', 'Members', 'Trips', 'Payments', 'Subscriptions', 'System']);
     expect(screen.getByRole('heading', { name: 'Overview' })).toBeInTheDocument();
   });
 
@@ -344,5 +344,121 @@ describe('App', () => {
     expect(await screen.findByText('Paid features off')).toBeInTheDocument();
     expect(calls).toContain(`POST /admin/subscriptions/${SUB_ID}/end`);
     expect(screen.queryByRole('button', { name: 'End now' })).not.toBeInTheDocument();
+  });
+
+  it('shows operations the business metrics and the system status', async () => {
+    const ops = {
+      status: 200,
+      body: {
+        data: {
+          id: STAFF_ID,
+          username: 'olu',
+          displayName: 'Olu',
+          role: 'OPERATIONS',
+          permissions: PERMISSIONS_BY_ROLE.OPERATIONS,
+        },
+      },
+    };
+    const metrics = {
+      generatedAt: '2026-11-23T08:00:00.000Z',
+      period: { from: '2026-10-25', to: '2026-11-23', days: 30 },
+      northStar: {
+        label: 'Completed trips with at least two people, per month',
+        months: [
+          { month: '2026-10', value: 12 },
+          { month: '2026-11', value: 17 },
+        ],
+      },
+      engagement: {
+        dau: 40,
+        mau: 400,
+        stickiness: 10,
+        daily: [{ date: '2026-11-23', active: 40 }],
+      },
+      growth: {
+        registrations: 120,
+        registrationConversion: 25.5,
+        profileCompletion: 60,
+        retention30: null,
+      },
+      trips: {
+        created: 30,
+        published: 25,
+        withJoinRequests: 80,
+        completionRate: 90,
+        repeatOrganiserRate: 40,
+      },
+      money: {
+        currency: 'INR',
+        gmvPaise: 12_500_000,
+        commissionPaise: 1_000_000,
+        mrrPaise: 69_900,
+        subscriptionRevenuePaise: 69_900,
+        refundRate: 2,
+        paymentSuccessRate: 95,
+        contributionMarginPaise: 900_000,
+        providerFeesPaise: 169_900,
+      },
+      events: [{ name: 'trip_completed', count: 17 }],
+    };
+    const system = {
+      generatedAt: '2026-11-23T08:00:00.000Z',
+      version: '0.1.0',
+      uptimeSeconds: 7_200,
+      dependencies: [
+        { name: 'database', up: true, latencyMs: 3 },
+        { name: 'redis', up: false, latencyMs: null },
+      ],
+      http: { requests: 1000, serverErrors: 2, p50Ms: 12, p95Ms: 80, slowest: [] },
+      jobs: [
+        {
+          name: 'payment-reconciliation',
+          description: 'Reconciles pending payments',
+          intervalSeconds: 60,
+          lastStartedAt: '2026-11-23T07:59:00.000Z',
+          lastSuccessAt: '2026-11-23T07:50:00.000Z',
+          lastError: 'Provider timed out',
+          lastErrorAt: '2026-11-23T07:59:00.000Z',
+          consecutiveFailures: 3,
+          runs: 50,
+          failures: 3,
+          healthy: false,
+        },
+      ],
+      payments: {
+        stuckWebhooks: 1,
+        invalidSignatures24h: 0,
+        failedRefunds: 0,
+        amountMismatches: 0,
+      },
+      moderation: { open: 4, overdue: 1, oldestOpenHours: 30 },
+      clientErrors24h: 5,
+    };
+    await signInAs(
+      {
+        'GET /admin/me': ops,
+        'GET /admin/metrics': { status: 200, body: { data: metrics } },
+        'GET /admin/system': { status: 200, body: { data: system } },
+      },
+      '/metrics',
+    );
+    expect(await screen.findByRole('heading', { name: 'Metrics' })).toBeInTheDocument();
+    expect(await screen.findByText('Completed with 2+ people')).toBeInTheDocument();
+    expect(screen.getByText('25.5%')).toBeInTheDocument();
+    expect(screen.getByText('₹1,25,000')).toBeInTheDocument();
+    expect(screen.getByText('No data')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('link', { name: 'System' }));
+    expect(await screen.findByText('Provider timed out')).toBeInTheDocument();
+    expect(screen.getByText('Down')).toBeInTheDocument();
+    expect(screen.getByText('Failing')).toBeInTheDocument();
+    expect(screen.getByText('Background jobs (1 need attention)')).toBeInTheDocument();
+  });
+
+  it('keeps business metrics from support staff', async () => {
+    await signInAs({ 'GET /admin/me': support }, '/metrics');
+    expect(
+      await screen.findByRole('heading', { name: 'Not available for your role' }),
+    ).toBeInTheDocument();
   });
 });
