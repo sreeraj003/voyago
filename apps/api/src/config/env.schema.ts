@@ -122,6 +122,29 @@ export const EnvSchema = z
     PUSH_PROVIDER: z.enum(['none', 'dev', 'expo']).default('none'),
     /** Optional: required only if "enhanced push security" is turned on in the Expo project. */
     EXPO_ACCESS_TOKEN: z.string().default(''),
+
+    // ── Payments (milestone 13) ────────────────────────────────────────────────
+    /** `none`: booking stays closed. `razorpay`: Razorpay Orders, Checkout, webhooks and refunds. */
+    PAYMENT_PROVIDER: z.enum(['none', 'razorpay']).default('none'),
+    RAZORPAY_KEY_ID: z.string().default(''),
+    /** Signs API calls and checkout signatures; stays on the server. */
+    RAZORPAY_KEY_SECRET: z.string().default(''),
+    /** The secret set on the Razorpay webhook (Dashboard > Webhooks); verifies every webhook. */
+    RAZORPAY_WEBHOOK_SECRET: z.string().default(''),
+    /**
+     * Live (real money) keys are refused unless this is `true`, which should only be set once the
+     * legal review, provider approval and operator agreements are in place.
+     */
+    PAYMENTS_LIVE_APPROVED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+    /** Platform commission in basis points (1000 = 10%), applied to new bookings. */
+    PLATFORM_COMMISSION_BPS: z.coerce.number().int().min(0).max(5000).default(1000),
+    /** Tax on the commission in basis points (1800 = 18% GST), applied to new bookings. */
+    COMMISSION_TAX_BPS: z.coerce.number().int().min(0).max(5000).default(1800),
+    /** Public base URL of this API, for the provider's checkout return address. */
+    API_PUBLIC_URL: z.url().default('http://localhost:3000'),
   })
   .superRefine((env, ctx) => {
     const cloudinary = [
@@ -156,6 +179,25 @@ export const EnvSchema = z
         path: ['TWILIO_FROM'],
         message: 'Set TWILIO_FROM or TWILIO_MESSAGING_SERVICE_SID',
       });
+    }
+    if (env.PAYMENT_PROVIDER === 'razorpay') {
+      for (const key of [
+        'RAZORPAY_KEY_ID',
+        'RAZORPAY_KEY_SECRET',
+        'RAZORPAY_WEBHOOK_SECRET',
+      ] as const) {
+        if (!env[key]) {
+          ctx.addIssue({ code: 'custom', path: [key], message: 'required when using razorpay' });
+        }
+      }
+      if (env.RAZORPAY_KEY_ID.startsWith('rzp_live_') && !env.PAYMENTS_LIVE_APPROVED) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['RAZORPAY_KEY_ID'],
+          message:
+            'live payment keys need PAYMENTS_LIVE_APPROVED=true (only after legal, provider and operator approval)',
+        });
+      }
     }
     if (env.DISCOVERY_DEFAULT_RADIUS_KM > env.DISCOVERY_MAX_RADIUS_KM) {
       ctx.addIssue({

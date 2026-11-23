@@ -1,4 +1,8 @@
 import {
+  AdminBookingDetailSchema,
+  AdminBookingPageSchema,
+  type AdminBookingsQuery,
+  type AdminRefundInput,
   type AdminMe,
   AdminMeSchema,
   AdminOperatorDetailSchema,
@@ -17,6 +21,7 @@ import {
   type AuditQuery,
   DashboardSchema,
   DocumentLinkSchema,
+  ReconcileResultSchema,
   type ResolveReportInput,
   type ReviewDocumentInput,
   type SetOperatorStatusInput,
@@ -100,4 +105,14 @@ export const adminApi = {
       { reason },
       AdminOperatorDetailSchema,
     ),
+
+  bookings: (query: AdminBookingsQuery) =>
+    api(`/admin/bookings${qs(query)}`, { schema: AdminBookingPageSchema, envelope: 'whole' }),
+  booking: (id: string) => api(`/admin/bookings/${id}`, { schema: AdminBookingDetailSchema }),
+  reconcileBooking: (id: string) =>
+    post(`/admin/bookings/${id}/reconcile`, {}, ReconcileResultSchema),
+  refundBooking: (id: string, input: AdminRefundInput) =>
+    post(`/admin/bookings/${id}/refund`, input, AdminBookingDetailSchema),
+  retryRefund: (refundId: string) =>
+    post(`/admin/refunds/${refundId}/retry`, {}, AdminBookingDetailSchema),
 };

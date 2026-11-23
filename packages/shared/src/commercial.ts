@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RefundTierSchema, RefundTiersSchema } from './bookings.js';
 import { EmailSchema, PhoneSchema } from './auth.js';
 import { GeoPointSchema } from './geo.js';
 import { OperatorDocumentIdSchema, PackagePhotoIdSchema } from './maps-media.js';
@@ -191,6 +192,8 @@ const packageFields = {
   inclusions: TermListSchema.min(1, 'List at least one thing that is included'),
   exclusions: TermListSchema.default([]),
   cancellationPolicy: text(20, 2000),
+  /** The refunds customers get, by how early they cancel; required before publishing. */
+  refundTiers: RefundTiersSchema.default([]),
   photoIds: z.array(PackagePhotoIdSchema).max(MAX_PACKAGE_PHOTOS).default([]),
 };
 
@@ -246,6 +249,7 @@ export const UpdatePackageSchema = z
     ...packageFields,
     currency: z.literal('INR').optional(),
     exclusions: TermListSchema.optional(),
+    refundTiers: RefundTiersSchema.optional(),
     photoIds: z.array(PackagePhotoIdSchema).max(MAX_PACKAGE_PHOTOS).optional(),
     description: z.string().trim().max(5000).nullable().optional(),
   })
@@ -295,10 +299,19 @@ export const PackageDetailSchema = PackageCardSchema.extend({
   inclusions: z.array(z.string()),
   exclusions: z.array(z.string()),
   cancellationPolicy: z.string(),
+  /** Refunds by how early the customer cancels, applied automatically. */
+  refundTiers: z.array(RefundTierSchema),
   imageUrls: z.array(z.string()),
-  /** Booking opens with the payments milestone; until then the listing is for information. */
+  /** On sale, places left, and payments set up on the server. */
   bookingOpen: z.boolean(),
-  viewer: z.object({ isOperator: z.boolean(), canAsk: z.boolean() }),
+  /** Why booking is closed, when it is. */
+  bookingClosedReason: z.string().nullable(),
+  viewer: z.object({
+    isOperator: z.boolean(),
+    canAsk: z.boolean(),
+    /** The viewer's current booking (pending or confirmed), if any. */
+    bookingId: z.uuid().nullable(),
+  }),
 });
 export type PackageDetail = z.infer<typeof PackageDetailSchema>;
 

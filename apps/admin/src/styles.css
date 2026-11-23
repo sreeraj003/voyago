@@ -416,3 +416,16 @@ blockquote {
     margin-left: 0;
   }
 }
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.filters .checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

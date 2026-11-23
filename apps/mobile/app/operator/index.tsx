@@ -212,8 +212,14 @@ function Summary({ data }: { data: OperatorDashboard }) {
           </View>
         ))}
       </View>
+      <Button
+        title="Bookings"
+        variant="secondary"
+        onPress={() => router.push('/operator/bookings')}
+      />
       <Text style={[styles.muted, { color: colors.textMuted }]}>
-        Bookings are read-only for now: online booking and payment open in a later update.
+        Payouts: what you are owed (after Voyago's commission and the tax on it) is shown with each
+        booking and paid out to your account separately.
       </Text>
       <Button
         title={`Customer questions${data.questions.unanswered > 0 ? ` (${data.questions.unanswered} new)` : ''}`}

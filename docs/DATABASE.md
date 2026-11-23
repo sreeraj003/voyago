@@ -261,6 +261,43 @@ fixed id beginning `5eed0000`, so re-running changes nothing. The `dev_*` accoun
 - Route data (`trips.origin/destination`, `trip_stops`) is planning data only. Live location is a
   separate store (Redis, milestone 11) and never written to these tables.
 
+## Milestone 13 changes (`20261125090000_bookings_payments`)
+
+- New enums `CancellationActor` (`CUSTOMER`, `OPERATOR`, `ADMIN`, `SYSTEM`), `RefundStatus`
+  (`PENDING`, `PROCESSED`, `FAILED`) and `LedgerEntryKind`.
+- `commercial_packages.refund_tiers` (JSON array of `{ hoursBefore, refundPercent }`,
+  `commercial_packages_refund_tiers_shape`). `commercial_packages_published_complete` now also
+  needs at least one tier; published packages without one were moved back to `DRAFT`.
+- `bookings` gains `idempotency_key` (unique per member), `expires_at`, `confirmed_at`, the
+  commission and tax rates and amounts fixed at booking time (`commission_bps`,
+  `commission_paise`, `commission_tax_bps`, `commission_tax_paise`, `operator_payable_paise`),
+  `refunded_amount_paise`, the cancellation policy and refund tiers agreed, and `cancelled_by`.
+  Existing rows were backfilled (10% and 18%). Checks: `bookings_seats_max` (10),
+  `bookings_commission_rates`, `bookings_split_matches` (payable + commission + tax = total −
+  platform fee), `bookings_refund_within_total`, `bookings_pending_expires`,
+  `bookings_confirmed_at`, `bookings_cancelled_consistent`, `bookings_refund_tiers_shape`. A
+  partial unique index allows one unpaid hold per member and package.
+- **No overselling:** trigger `bookings_enforce_capacity` locks the package row and refuses any
+  insert or update that would make held places (pending and confirmed) exceed `max_group_size`
+  (`bookings_capacity`, "Not enough places left on this package"). Parallel requests for the last
+  places queue on the lock, so only one succeeds.
+- `payments` gains `provider_fee_paise`, `provider_tax_paise`, `method`, unique
+  `(provider, provider_order_id)`, and checks `payments_provider_fees_non_negative`,
+  `payments_captured_at`. Card data is never stored.
+- New `refunds`: booking, payment, amount, currency, status, initiator, who asked, reason, the tier
+  applied, provider refund id (unique per provider), idempotency key (unique), failure reason,
+  processed time. Checks for a positive amount, INR, the percent range, `processed_at` exactly
+  when processed, and a reason when failed.
+- New `ledger_entries`: one line per kind per payment or refund (unique), signed whole paise, the
+  booking and operator. Checks: exactly one source (payment or refund), INR, reversals never
+  positive. **Append-only:** trigger `ledger_entries_append_only` refuses UPDATE and DELETE;
+  corrections are new entries. Only a maintenance session that runs
+  `SET LOCAL voyago.ledger_maintenance = 'on'` can delete (used by test clean-up).
+- New `payment_events`: provider webhooks and checkout returns, unique per provider event id, with
+  whether the signature was valid, a summary of ids, statuses and amounts only, the result and when
+  it was applied.
+- Index `bookings (status, expires_at)` for the hold sweep.
+
 ## Milestone 12 changes (`20261124090000_commercial_marketplace`)
 
 - New enum `OperatorCategory` (`TOUR_OPERATOR`, `GUIDED_RIDES`, `TREKKING`,

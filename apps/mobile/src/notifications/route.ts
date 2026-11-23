@@ -13,6 +13,8 @@ export function routeFor(data: Record<string, unknown>): Href | null {
   if (conversationId) return `/chats/${conversationId}`;
   if (tripId && text('screen') === 'safety') return `/trips/${tripId}/safety`;
   if (text('screen') === 'questions') return '/operator/questions';
+  const bookingId = text('bookingId');
+  if (bookingId) return `/bookings/${bookingId}`;
   const packageId = text('packageId');
   if (packageId) return `/packages/${packageId}`;
   if (tripId) return `/trips/${tripId}`;

@@ -22,7 +22,8 @@ export async function createApp(
 ): Promise<INestApplication> {
   const app = await NestFactory.create<NestExpressApplication>(
     AppModule.forRoot(config, options.extraModules),
-    { bufferLogs: true, bodyParser: false },
+    // rawBody keeps the exact bytes for verifying provider webhook signatures.
+    { bufferLogs: true, bodyParser: false, rawBody: true },
   );
   // Order matters: request ids first, so body-parsing errors are traceable too.
   app.use(requestIdMiddleware);

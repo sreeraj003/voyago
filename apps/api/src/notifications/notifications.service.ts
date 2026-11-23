@@ -178,6 +178,7 @@ const DATA_KEYS = [
   'username',
   'conversationId',
   'packageId',
+  'bookingId',
 ] as const;
 
 function readData(value: unknown): AppNotification['data'] {

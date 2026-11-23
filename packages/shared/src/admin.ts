@@ -34,6 +34,10 @@ export const ADMIN_PERMISSIONS = [
   /** Open operator documents (short-lived links; every view is audited). */
   'operators.documents',
   'audit.read',
+  /** Bookings, payments, refunds, the ledger and provider events. */
+  'payments.read',
+  /** Refund, retry refunds and reconcile with the payment provider. */
+  'payments.manage',
 ] as const;
 export type AdminPermission = (typeof ADMIN_PERMISSIONS)[number];
 export const AdminPermissionSchema = z.enum(ADMIN_PERMISSIONS);
@@ -49,7 +53,7 @@ export const PERMISSIONS_BY_ROLE: Record<StaffRole, readonly AdminPermission[]> 
     'reports.read',
     'reports.manage',
   ],
-  SUPPORT: ['dashboard.view', 'users.read', 'trips.read', 'reports.read'],
+  SUPPORT: ['dashboard.view', 'users.read', 'trips.read', 'reports.read', 'payments.read'],
   OPERATIONS: [
     'dashboard.view',
     'users.read',
@@ -57,6 +61,8 @@ export const PERMISSIONS_BY_ROLE: Record<StaffRole, readonly AdminPermission[]> 
     'operators.read',
     'operators.verify',
     'operators.documents',
+    'payments.read',
+    'payments.manage',
   ],
 };
 

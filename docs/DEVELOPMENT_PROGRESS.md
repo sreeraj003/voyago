@@ -17,10 +17,94 @@ verified before the next starts.
 | 10  | Admin dashboard and moderation              | Done        |
 | 11  | Live location and safety workflows          | Done        |
 | 12  | Commercial operators and packages           | Done        |
-| 13  | Bookings, payments, commissions and refunds | Not started |
+| 13  | Bookings, payments, commissions and refunds | Done        |
 | 14  | Subscriptions and monetisation              | Not started |
 | 15  | Analytics, observability and operations     | Not started |
 | 16  | Security, testing, launch readiness, deploy | Not started |
+
+---
+
+## Milestone 13: Bookings, payments, commissions and refunds (2026-11-23)
+
+### Implemented
+
+- **Booking:** on a package's page a member picks places (1 to 10, never more than are left),
+  sees the total, the refund schedule and the cancellation policy, and books. The server prices
+  the booking, holds the places for 15 minutes and creates a Razorpay order. Each attempt carries an
+  idempotency key, so a retry returns the same booking. A database trigger locks the package and
+  refuses any booking that would oversell, so parallel requests for the last places can't both win.
+- **Paying:** the app opens a Voyago-hosted payment page (signed link, strict CSP) that runs
+  Razorpay's checkout. When it posts back, the server checks the checkout signature, fetches the
+  payment from Razorpay, captures it if only authorised, and confirms the booking only when the
+  amount and currency match. Signed webhooks do the same, stored once per event id, so duplicate,
+  late and out-of-order deliveries change nothing twice. A payment after the hold lapsed is
+  confirmed if places remain, otherwise refunded in full automatically. The customer and the
+  business are notified; the exact meeting point appears for confirmed guests.
+- **Money:** whole paise and INR everywhere. Customers pay the listed price; Voyago's commission
+  (10% by default, `PLATFORM_COMMISSION_BPS`) and 18% GST on it (`COMMISSION_TAX_BPS`) come from
+  the business's share and are fixed on the booking. Each capture and refund writes append-only
+  ledger lines (gross, commission, tax, payable to the business, provider fee and its tax, and
+  proportional reversals) that always add up.
+- **Refunds:** the package's refund schedule (for example 100% up to 7 days before, 50% up to 48
+  hours) is shown before booking and stored on the booking. Customers see what cancelling returns
+  and cancel; the refund follows the schedule. A business that cancels always refunds in full.
+  Refunds are tracked as pending, processed or failed, updated from Razorpay's answer and webhooks.
+- **Reconciliation:** a sweep every minute checks lapsed holds for payments before releasing them,
+  re-checks refunds pending for over 10 minutes, and completes bookings after the experience ends.
+- **Admin app:** a Payments section (support can read; operations can act) lists bookings with a
+  "needs attention" filter and search by username, package or provider id; a booking shows its
+  payments, refunds, ledger and provider events, with "check with the provider", goodwill or full
+  refunds, and retrying failed refunds. All audited.
+- **Mobile:** book and pay from the package page, My bookings (Profile), a booking page with
+  status, payment retry while held, the exact meeting point once confirmed, refund preview and
+  cancel; business bookings with the money split and cancel-with-full-refund; a refund schedule
+  field in the package editor (one rule per line, like "7 days: 100%"). Booking notifications open
+  the booking.
+- **Production gate:** with `PAYMENT_PROVIDER=none` (the default) booking stays closed and says so.
+  Razorpay test keys turn it on; live keys are refused unless `PAYMENTS_LIVE_APPROVED=true`.
+
+### Database changes
+
+Migration `20261125090000_bookings_payments`; see `docs/DATABASE.md`.
+
+### APIs
+
+`POST /packages/:id/bookings`, `GET /me/bookings`, `GET /bookings/:id`,
+`POST /bookings/:id/cancel`, `GET /me/operator/bookings`, `POST /me/operator/bookings/:id/cancel`,
+`GET /checkout/:id`, `POST /checkout/:id/razorpay`, `POST /webhooks/razorpay`,
+`GET /admin/bookings`, `GET /admin/bookings/:id`, `POST /admin/bookings/:id/reconcile|refund`,
+`POST /admin/refunds/:id/retry`. Package create and update take `refundTiers`. See
+`docs/API.md`, "Bookings and payments".
+
+### Tests
+
+- 21 new end-to-end tests (243 in total) against an in-memory stand-in for Razorpay's API:
+  booking validation and server pricing (client amounts ignored), own package, idempotent
+  retries and one hold per package, return addresses, a failed order releasing places, parallel
+  requests for the last places (exactly one wins); success through the checkout return (forged
+  signature refused, capture, ledger sums, notifications, the business's view without contact
+  details); duplicate webhooks; a failed attempt then success; bad webhook signatures; amount
+  mismatch flagged for staff; a late payment confirmed, and one refunded because places were
+  taken; full and partial refunds by the schedule with proportional ledger reversals; a pending
+  refund settled by webhook; business cancellation; a failed refund retried by operations
+  (support refused); goodwill and full admin refunds and over-refunds refused; reconciliation
+  confirming a payment no callback reported; search; the append-only ledger; booking closed
+  without a provider.
+- Unit tests: refund tiers, rounding, the commission split and proportional reversals (shared, 41
+  in total); the admin payments page retrying a refund (admin, 14); the refund schedule field,
+  booking helpers and notification routes (mobile, 54).
+
+### Outstanding
+
+- **Live payments are off.** Taking real money needs legal review of the terms and refund
+  policy, Razorpay account activation (KYC), GST registration for the commission invoices, and
+  operational sign-off; then live keys and `PAYMENTS_LIVE_APPROVED=true`.
+- No Razorpay account exists in this environment, so the flow was tested against a stand-in that
+  follows Razorpay's documented API, not against Razorpay's test mode. Add test keys to
+  `apps/api/.env` and the webhook in the Razorpay dashboard to try it end to end.
+- Payouts to businesses are manual: the ledger shows what each is owed. Automatic split
+  settlement (Razorpay Route) and payout reports are follow-ups.
+- Commission invoices (GST) and receipts are not generated yet.
 
 ---
 

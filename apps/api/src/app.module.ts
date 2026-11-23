@@ -23,6 +23,7 @@ import { CommunitiesModule } from './communities/communities.module.js';
 import { DiscoveryModule } from './discovery/discovery.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { ParticipationModule } from './participation/participation.module.js';
+import { PaymentsModule } from './payments/payments.module.js';
 import { PostsModule } from './posts/posts.module.js';
 import { TripsModule } from './trips/trips.module.js';
 import { UsersModule } from './users/users.module.js';
@@ -100,6 +101,7 @@ export class AppModule {
         RealtimeModule,
         ChatModule,
         SafetyModule,
+        PaymentsModule,
         CommercialModule,
         ...extraModules,
       ],

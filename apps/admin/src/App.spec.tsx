@@ -76,7 +76,7 @@ describe('App', () => {
       within(nav)
         .getAllByRole('link')
         .map((link) => link.textContent),
-    ).toEqual(['Overview', 'Reports', 'Members', 'Trips']);
+    ).toEqual(['Overview', 'Reports', 'Members', 'Trips', 'Payments']);
     expect(screen.getByRole('heading', { name: 'Overview' })).toBeInTheDocument();
   });
 
@@ -155,5 +155,108 @@ describe('App', () => {
     fireEvent.submit(within(row).getByPlaceholderText('Reason (saved in the audit log)'));
     expect(await screen.findByText('Suspended: Misleading price')).toBeInTheDocument();
     expect(within(row).getByRole('button', { name: 'Restore' })).toBeInTheDocument();
+  });
+  it('lets operations retry a failed refund and shows the money trail', async () => {
+    const BOOKING_ID = '44444444-4444-4444-8444-444444444444';
+    const REFUND_ID = '55555555-5555-4555-8555-555555555555';
+    const detail = (refund: 'FAILED' | 'PROCESSED') => ({
+      status: 200,
+      body: {
+        data: {
+          id: BOOKING_ID,
+          status: refund === 'FAILED' ? 'CANCELLED' : 'REFUNDED',
+          seats: 1,
+          totalAmountPaise: 250_000,
+          refundedAmountPaise: refund === 'FAILED' ? 0 : 250_000,
+          currency: 'INR',
+          createdAt: '2026-11-20T00:00:00.000Z',
+          customer: { id: STAFF_ID, username: 'meera', displayName: 'Meera' },
+          package: { id: BOOKING_ID, title: 'Kudremukh weekend trek' },
+          operator: { id: BOOKING_ID, displayName: 'Ghats Treks' },
+          paymentStatus: refund === 'FAILED' ? 'CAPTURED' : 'REFUNDED',
+          needsAttention: refund === 'FAILED',
+          unitPricePaise: 250_000,
+          commissionBps: 1000,
+          commissionPaise: 25_000,
+          commissionTaxBps: 1800,
+          commissionTaxPaise: 4_500,
+          operatorPayablePaise: 220_500,
+          expiresAt: null,
+          confirmedAt: '2026-11-20T00:01:00.000Z',
+          cancelledAt: '2026-11-21T00:00:00.000Z',
+          cancelledBy: 'CUSTOMER',
+          cancellationReason: null,
+          refundTiers: [{ hoursBefore: 168, refundPercent: 100 }],
+          payments: [
+            {
+              id: BOOKING_ID,
+              provider: 'razorpay',
+              providerOrderId: 'order_1',
+              providerPaymentId: 'pay_1',
+              status: refund === 'FAILED' ? 'CAPTURED' : 'REFUNDED',
+              amountPaise: 250_000,
+              refundedAmountPaise: refund === 'FAILED' ? 0 : 250_000,
+              providerFeePaise: 5_900,
+              providerTaxPaise: 900,
+              method: 'upi',
+              failureReason: null,
+              capturedAt: '2026-11-20T00:01:00.000Z',
+              createdAt: '2026-11-20T00:00:00.000Z',
+            },
+          ],
+          refunds: [
+            {
+              id: REFUND_ID,
+              amountPaise: 250_000,
+              status: refund,
+              initiator: 'CUSTOMER',
+              refundPercent: 100,
+              createdAt: '2026-11-21T00:00:00.000Z',
+              processedAt: refund === 'FAILED' ? null : '2026-11-21T01:00:00.000Z',
+              providerRefundId: null,
+              reason: 'Cancelled by the customer',
+              failureReason: refund === 'FAILED' ? 'Refund could not be processed' : null,
+            },
+          ],
+          ledger: [
+            {
+              id: REFUND_ID,
+              kind: 'GROSS',
+              amountPaise: 250_000,
+              currency: 'INR',
+              createdAt: '2026-11-20T00:01:00.000Z',
+            },
+          ],
+          events: [],
+          actions: refund === 'FAILED' ? ['reconcile', 'retry_refund'] : ['reconcile'],
+        },
+      },
+    });
+    const ops = {
+      status: 200,
+      body: {
+        data: {
+          id: STAFF_ID,
+          username: 'oli',
+          displayName: 'Oli',
+          role: 'OPERATIONS',
+          permissions: PERMISSIONS_BY_ROLE.OPERATIONS,
+        },
+      },
+    };
+    await signInAs(
+      {
+        'GET /admin/me': ops,
+        [`GET /admin/bookings/${BOOKING_ID}`]: detail('FAILED'),
+        [`POST /admin/refunds/${REFUND_ID}/retry`]: detail('PROCESSED'),
+      },
+      `/bookings/${BOOKING_ID}`,
+    );
+    expect(await screen.findByText('Refund could not be processed')).toBeInTheDocument();
+    expect(screen.getByText('Needs attention')).toBeInTheDocument();
+    expect(screen.getByText('Gross')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(await screen.findByText('Processed')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
   });
 });

@@ -5,6 +5,8 @@ import { NavLink, Navigate, Route, Routes } from 'react-router-dom';
 import { ApiError, refreshSession, signOut } from './api';
 import { ErrorText, label, Loading } from './components';
 import { AuditPage } from './pages/AuditPage';
+import { BookingDetailPage } from './pages/BookingDetailPage';
+import { BookingsPage } from './pages/BookingsPage';
 import { DashboardPage } from './pages/DashboardPage';
 import { LoginPage } from './pages/LoginPage';
 import { OperatorDetailPage } from './pages/OperatorDetailPage';
@@ -24,6 +26,7 @@ const NAV: { to: string; title: string; permission: AdminPermission }[] = [
   { to: '/users', title: 'Members', permission: 'users.read' },
   { to: '/trips', title: 'Trips', permission: 'trips.read' },
   { to: '/operators', title: 'Operators', permission: 'operators.read' },
+  { to: '/bookings', title: 'Payments', permission: 'payments.read' },
   { to: '/audit', title: 'Audit log', permission: 'audit.read' },
 ];
 
@@ -96,6 +99,8 @@ export function App() {
           <Route path="/trips/:id" element={guard('trips.read', <TripDetailPage />)} />
           <Route path="/operators" element={guard('operators.read', <OperatorsPage />)} />
           <Route path="/operators/:id" element={guard('operators.read', <OperatorDetailPage />)} />
+          <Route path="/bookings" element={guard('payments.read', <BookingsPage />)} />
+          <Route path="/bookings/:id" element={guard('payments.read', <BookingDetailPage />)} />
           <Route path="/audit" element={guard('audit.read', <AuditPage />)} />
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="*" element={<h1>Page not found</h1>} />

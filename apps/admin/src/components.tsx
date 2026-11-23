@@ -15,13 +15,33 @@ export function Badge({ value, tone }: { value: string; tone?: 'ok' | 'warn' | '
 }
 
 function toneFor(value: string): 'ok' | 'warn' | 'bad' | 'muted' {
-  if (['ACTIVE', 'VERIFIED', 'ACCEPTED', 'ACTIONED', 'PUBLISHED', 'COMPLETED'].includes(value)) {
+  if (
+    [
+      'ACTIVE',
+      'VERIFIED',
+      'ACCEPTED',
+      'ACTIONED',
+      'PUBLISHED',
+      'COMPLETED',
+      'CONFIRMED',
+      'CAPTURED',
+      'PROCESSED',
+    ].includes(value)
+  ) {
     return 'ok';
   }
-  if (['SUSPENDED', 'REJECTED', 'CRITICAL', 'HIGH', 'CANCELLED', 'HIDDEN'].includes(value)) {
+  if (
+    ['SUSPENDED', 'REJECTED', 'CRITICAL', 'HIGH', 'CANCELLED', 'HIDDEN', 'FAILED'].includes(value)
+  ) {
     return 'bad';
   }
-  if (['OPEN', 'IN_REVIEW', 'PENDING', 'MEDIUM'].includes(value)) return 'warn';
+  if (
+    ['OPEN', 'IN_REVIEW', 'PENDING', 'MEDIUM', 'PENDING_PAYMENT', 'PARTIALLY_REFUNDED'].includes(
+      value,
+    )
+  ) {
+    return 'warn';
+  }
   return 'muted';
 }
 

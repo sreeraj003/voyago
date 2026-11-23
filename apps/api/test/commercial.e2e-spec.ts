@@ -22,6 +22,7 @@ import { z } from 'zod';
 import { PrismaService } from '../src/database/prisma.service.js';
 import { CloudinaryService } from '../src/integrations/cloudinary.service.js';
 import { bearer, login, registerAndLogin, startAuthApp } from './support/auth-helpers.js';
+import { bookingFields } from './support/booking-fields.js';
 
 /**
  * Commercial operators and packages: onboarding, the verification gate on publishing, price and
@@ -79,6 +80,10 @@ const packageInput = () => ({
   inclusions: ['Forest entry permit', 'Guide', 'Two meals'],
   exclusions: ['Travel to the base village'],
   cancellationPolicy: 'Full refund up to 7 days before the start; 50% up to 48 hours before.',
+  refundTiers: [
+    { hoursBefore: 168, refundPercent: 100 },
+    { hoursBefore: 48, refundPercent: 50 },
+  ],
 });
 
 describe('commercial operators and packages (e2e)', () => {
@@ -263,6 +268,13 @@ describe('commercial operators and packages (e2e)', () => {
         { mode: 'RIDE' },
         { inclusions: [] },
         { cancellationPolicy: 'No refunds.' },
+        {
+          refundTiers: [
+            { hoursBefore: 48, refundPercent: 50 },
+            { hoursBefore: 168, refundPercent: 20 },
+          ],
+        },
+        { refundTiers: [{ hoursBefore: 48, refundPercent: 150 }] },
         { photoIds: ['https://example.com/photo.jpg'] },
       ];
       for (const patch of invalid) {
@@ -583,6 +595,7 @@ describe('commercial operators and packages (e2e)', () => {
           status: 'CONFIRMED',
           unitPricePaise: 349_900,
           totalAmountPaise: 349_900 * 3,
+          ...bookingFields(349_900 * 3, { status: 'CONFIRMED' }),
         },
       });
       const detail = dataOf(

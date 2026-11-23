@@ -1,9 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { formatPaise, type PackageDetail } from '@voyago/shared';
+import { describeRefundTiers, formatPaise, type PackageDetail } from '@voyago/shared';
+import * as Crypto from 'expo-crypto';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { createBooking } from '../../src/api/bookings';
 import { askQuestion, getPackage, getPackageQuestions } from '../../src/api/commercial';
+import { clampSeats, maxSeats, priceLine } from '../../src/commercial/booking';
+import { checkoutReturnUrl, useCheckout } from '../../src/commercial/use-checkout';
 import { useFormError } from '../../src/auth/use-form-error';
 import { categoryLabel, packageDates } from '../../src/commercial/package-form';
 import { Button, FormMessage, TextField } from '../../src/components/Form';
@@ -72,13 +76,20 @@ function PackageView({ pkg }: { pkg: PackageDetail }) {
             title="Manage this package"
             onPress={() => router.push(`/operator/packages/${pkg.id}`)}
           />
+        ) : pkg.viewer.bookingId ? (
+          <Button
+            title="See my booking"
+            onPress={() => router.push(`/bookings/${pkg.viewer.bookingId}`)}
+          />
+        ) : pkg.bookingOpen && !closed ? (
+          <BookingPanel pkg={pkg} />
         ) : (
           <>
-            <Button title="Booking opens soon" disabled onPress={() => undefined} />
+            <Button title="Booking not available" disabled onPress={() => undefined} />
             <Text style={[styles.muted, { color: colors.textMuted }]}>
               {closed
                 ? 'This experience is no longer on sale.'
-                : 'Online booking and payment are not open yet. You can ask the business a question below.'}
+                : `${pkg.bookingClosedReason ?? 'Online booking is not open yet'}. You can ask the business a question below.`}
             </Text>
           </>
         )}
@@ -94,8 +105,16 @@ function PackageView({ pkg }: { pkg: PackageDetail }) {
         items={pkg.exclusions.length > 0 ? pkg.exclusions : ['Nothing listed']}
       />
       <View style={card}>
-        <Text style={[styles.heading, { color: colors.text }]}>Cancellation policy</Text>
+        <Text style={[styles.heading, { color: colors.text }]}>Cancellation and refunds</Text>
+        {pkg.refundTiers.length > 0 ? (
+          <Text style={[styles.body, { color: colors.text }]}>
+            {describeRefundTiers(pkg.refundTiers)}.
+          </Text>
+        ) : null}
         <Text style={[styles.body, { color: colors.text }]}>{pkg.cancellationPolicy}</Text>
+        <Text style={[styles.muted, { color: colors.textMuted }]}>
+          If the business cancels, you get everything back.
+        </Text>
       </View>
       <View style={card}>
         <Text style={[styles.heading, { color: colors.text }]}>Meeting point</Text>
@@ -125,6 +144,72 @@ function PackageView({ pkg }: { pkg: PackageDetail }) {
         <ReportForm targetType="COMMERCIAL_PACKAGE" targetId={pkg.id} label="Report this listing" />
       ) : null}
     </FormScreen>
+  );
+}
+
+/** Choose places, see the total and the refund schedule, then pay on the provider's page. */
+function BookingPanel({ pkg }: { pkg: PackageDetail }) {
+  const { colors } = useTheme();
+  const queryClient = useQueryClient();
+  const [seats, setSeats] = useState(1);
+  // One key per attempt: a retry after a dropped connection returns the same hold.
+  const [key, setKey] = useState(() => Crypto.randomUUID().replace(/-/g, ''));
+  const error = useFormError();
+  const { pay, paying } = useCheckout();
+  const most = maxSeats(pkg.seatsLeft);
+  const book = useMutation({
+    mutationFn: async () => {
+      const booking = await createBooking(pkg.id, {
+        seats,
+        idempotencyKey: key,
+        returnUrl: checkoutReturnUrl(),
+      });
+      return pay(booking);
+    },
+    onMutate: () => error.clear(),
+    onSuccess: (booking) => {
+      setKey(Crypto.randomUUID().replace(/-/g, ''));
+      void queryClient.invalidateQueries({ queryKey: ['package', pkg.id] });
+      router.push(`/bookings/${booking.id}`);
+    },
+    onError: error.capture,
+  });
+  if (most === 0) {
+    return <Button title="Fully booked" disabled onPress={() => undefined} />;
+  }
+  return (
+    <View style={styles.section}>
+      <View style={styles.stepper}>
+        <Button
+          title="−"
+          variant="secondary"
+          disabled={seats <= 1}
+          onPress={() => setSeats((n) => clampSeats(n - 1, pkg.seatsLeft))}
+        />
+        <Text accessibilityLiveRegion="polite" style={[styles.body, { color: colors.text }]}>
+          {seats} {seats === 1 ? 'place' : 'places'}
+        </Text>
+        <Button
+          title="+"
+          variant="secondary"
+          disabled={seats >= most}
+          onPress={() => setSeats((n) => clampSeats(n + 1, pkg.seatsLeft))}
+        />
+      </View>
+      <Text style={[styles.heading, { color: colors.text }]}>
+        {priceLine(seats, pkg.pricePaise)}
+      </Text>
+      <Text style={[styles.muted, { color: colors.textMuted }]}>
+        Refunds: {describeRefundTiers(pkg.refundTiers)}. Places are held for 15 minutes while you
+        pay on Razorpay's secure page. Voyago never sees your card or bank details.
+      </Text>
+      {error.message ? <FormMessage tone="error">{error.message}</FormMessage> : null}
+      <Button
+        title="Book and pay"
+        loading={book.isPending || paying}
+        onPress={() => book.mutate()}
+      />
+    </View>
   );
 }
 
@@ -219,4 +304,5 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   section: { gap: spacing.sm },
+  stepper: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
 });

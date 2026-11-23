@@ -19,6 +19,8 @@ import {
   packageRuleIssues,
   type PackagesQuerySchema,
   type PublicOperator,
+  type RefundTier,
+  RefundTiersSchema,
   type UpdatePackageSchema,
 } from '@voyago/shared';
 import { type z } from 'zod';
@@ -31,6 +33,7 @@ import { CloudinaryService } from '../integrations/cloudinary.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { RedisService } from '../redis/redis.service.js';
 import { blockedIds } from '../social/blocks.js';
+import { PaymentGateway } from '../payments/payment-gateway.js';
 import { OperatorsService } from './operators.service.js';
 
 const DAY_MS = 86_400_000;
@@ -56,6 +59,7 @@ const packageSelect = {
   inclusions: true,
   exclusions: true,
   cancellationPolicy: true,
+  refundTiers: true,
   status: true,
   coverImageKey: true,
   imageKeys: true,
@@ -87,6 +91,12 @@ const LISTED = (now: Date): Prisma.CommercialPackageWhereInput => ({
   startsAt: { gt: now },
 });
 
+/** The stored refund schedule (validated on the way in; re-checked here). */
+export function tiersOf(row: { refundTiers: unknown }): RefundTier[] {
+  const parsed = RefundTiersSchema.safeParse(row.refundTiers);
+  return parsed.success ? parsed.data : [];
+}
+
 /** Calendar days in India covered by the dates, counting both ends. */
 export function durationDays(startsAt: Date, endsAt: Date): number {
   const day = (d: Date) => Math.floor((d.getTime() + IST_OFFSET_MS) / DAY_MS);
@@ -116,6 +126,7 @@ export class PackagesService {
     private readonly cloudinary: CloudinaryService,
     private readonly notifications: NotificationsService,
     private readonly redis: RedisService,
+    private readonly gateway: PaymentGateway,
   ) {}
 
   // ── Operator: managing packages ───────────────────────────────────────────
@@ -169,6 +180,7 @@ export class PackagesService {
           inclusions: input.inclusions,
           exclusions: input.exclusions,
           cancellationPolicy: input.cancellationPolicy,
+          refundTiers: input.refundTiers,
           imageKeys: input.photoIds,
           coverImageKey: input.photoIds[0] ?? null,
         },
@@ -236,6 +248,7 @@ export class PackagesService {
           inclusions: input.inclusions,
           exclusions: input.exclusions,
           cancellationPolicy: input.cancellationPolicy,
+          refundTiers: input.refundTiers,
           imageKeys: input.photoIds,
           coverImageKey: input.photoIds ? (input.photoIds[0] ?? null) : undefined,
         },
@@ -377,16 +390,30 @@ export class PackagesService {
         (row.status === 'PUBLISHED' && row.operator.verificationStatus === 'VERIFIED'));
     if (!row || !visible) throw new NotFoundException('Package not found');
     if (!isOperator && !isStaff) await this.countView(id, user.id);
-    const [points, held, hidden] = await Promise.all([
+    const [points, held, hidden, booking] = await Promise.all([
       this.points([id]),
       this.heldSeats([id]),
       blockedIds(this.prisma, user.id),
+      this.prisma.booking.findFirst({
+        where: { packageId: id, userId: user.id, status: HOLDING },
+        select: { id: true, status: true },
+        orderBy: { createdAt: 'desc' },
+      }),
     ]);
-    return this.detail(row, points.get(id), held.get(id) ?? 0, {
+    const view = this.detail(row, points.get(id), held.get(id) ?? 0, {
       isOperator,
       canAsk:
         !isOperator && row.status === 'PUBLISHED' && !hidden.includes(row.operator.ownerUserId),
+      bookingId: booking?.id ?? null,
     });
+    if (isOperator) view.bookingOpen = false;
+    if (isOperator && !view.bookingClosedReason) view.bookingClosedReason = 'This is your package';
+    // Confirmed guests get the exact meeting point.
+    const exact = points.get(id)?.meetingPoint;
+    if (booking?.status === 'CONFIRMED' && exact) {
+      view.meetingPoint = { ...view.meetingPoint, point: exact, approximate: false };
+    }
+    return view;
   }
 
   async operatorProfile(user: AuthUser, slug: string): Promise<PublicOperator> {
@@ -602,6 +629,7 @@ export class PackagesService {
     if (!row.meetingPointName) issues.push('Set the meeting point');
     if (row.inclusions.length === 0) issues.push('List what is included');
     if (row.cancellationPolicy.trim().length < 20) issues.push('Write the cancellation terms');
+    if (tiersOf(row).length === 0) issues.push('Set the refund schedule');
     return issues;
   }
 
@@ -707,12 +735,29 @@ export class PackagesService {
       inclusions: row.inclusions,
       exclusions: row.exclusions,
       cancellationPolicy: row.cancellationPolicy,
+      refundTiers: tiersOf(row),
       imageUrls: row.imageKeys
         .map((key) => this.cloudinary.photoUrl(key))
         .filter((url): url is string => url !== null),
-      bookingOpen: false,
+      ...this.bookingState(row, held),
       viewer,
     };
+  }
+
+  /** Whether a customer can book now, and if not, why. */
+  private bookingState(row: PackageRow, held: number, now = Date.now()) {
+    const reason = !this.gateway.enabled
+      ? 'Online booking is not available yet'
+      : row.status !== 'PUBLISHED' || row.operator.verificationStatus !== 'VERIFIED'
+        ? 'This experience is not on sale'
+        : !row.startsAt || row.startsAt.getTime() <= now
+          ? 'This experience has started'
+          : tiersOf(row).length === 0
+            ? 'This experience has no refund schedule yet'
+            : row.maxGroupSize - held <= 0
+              ? 'Fully booked'
+              : null;
+    return { bookingOpen: reason === null, bookingClosedReason: reason };
   }
 
   private async ownViews(rows: PackageRow[]): Promise<OwnPackage[]> {
@@ -740,6 +785,7 @@ export class PackagesService {
         ...this.detail(row, points.get(row.id), held.get(row.id) ?? 0, {
           isOperator: true,
           canAsk: false,
+          bookingId: null,
         }),
         photoIds: row.imageKeys,
         suspendedReason: row.suspendedReason,

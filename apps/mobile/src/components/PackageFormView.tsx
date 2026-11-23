@@ -1,10 +1,10 @@
-import { MAX_PACKAGE_PHOTOS } from '@voyago/shared';
+import { describeRefundTiers, MAX_PACKAGE_PHOTOS, RefundTiersSchema } from '@voyago/shared';
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from 'react';
 import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { uploadImage } from '../api/maps-media';
 import { useFeatures } from '../api/use-features';
-import { type PackageForm, rupeesToPaise } from '../commercial/package-form';
+import { type PackageForm, parseRefundSchedule, rupeesToPaise } from '../commercial/package-form';
 import { TRAVEL_ACTIVITY_OPTIONS } from '../trips/labels';
 import { radius, spacing, typography } from '../theme/tokens';
 import { useTheme } from '../theme/use-theme';
@@ -152,6 +152,15 @@ export function PackageFormView({ form, onChange, errors, previews, onPreview }:
         placeholder="Full refund up to 7 days before the start; 50% up to 48 hours before."
         error={errors.cancellationPolicy}
       />
+      <TextField
+        label="Refund schedule (one rule per line; needed to take bookings)"
+        value={form.refundSchedule}
+        onChangeText={set('refundSchedule')}
+        multiline
+        placeholder={'7 days: 100%\n48 hours: 50%'}
+        error={errors.refundSchedule}
+      />
+      <RefundPreview text={form.refundSchedule} />
       <Photos
         photoIds={form.photoIds}
         previews={previews}
@@ -161,6 +170,20 @@ export function PackageFormView({ form, onChange, errors, previews, onPreview }:
         onPreview={onPreview}
       />
     </>
+  );
+}
+
+/** The schedule in the words customers will see, once it reads correctly. */
+function RefundPreview({ text }: { text: string }) {
+  const { colors } = useTheme();
+  const parsed = parseRefundSchedule(text);
+  if (!text.trim() || 'error' in parsed) return null;
+  const tiers = RefundTiersSchema.safeParse(parsed.tiers);
+  if (!tiers.success) return null;
+  return (
+    <Text style={[styles.muted, { color: colors.textMuted }]}>
+      Customers will see: {describeRefundTiers(tiers.data)}.
+    </Text>
   );
 }
 

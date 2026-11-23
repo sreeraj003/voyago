@@ -3,6 +3,7 @@ import {
   type CreatePackageInput,
   type OperatorCategory,
   type OwnPackage,
+  type RefundTier,
 } from '@voyago/shared';
 import {
   formatCoords,
@@ -31,6 +32,8 @@ export type PackageForm = {
   inclusions: string;
   exclusions: string;
   cancellationPolicy: string;
+  /** One rule per line, like "7 days: 100%" or "48 hours: 50%". */
+  refundSchedule: string;
   photoIds: string[];
 };
 
@@ -50,6 +53,7 @@ export const emptyPackageForm = (): PackageForm => ({
   inclusions: '',
   exclusions: '',
   cancellationPolicy: '',
+  refundSchedule: '',
   photoIds: [],
 });
 
@@ -69,12 +73,40 @@ export function rupeesToPaise(text: string): number | null {
 export const paiseToRupees = (paise: number) =>
   paise % 100 === 0 ? String(paise / 100) : (paise / 100).toFixed(2);
 
+const TIER_LINE = /^(\d+)\s*(days?|d|hours?|hrs?|h)\b[\s:=-]*?(\d+)\s*%$/i;
+
+/** "7 days: 100%\n48 hours: 50%" → tiers; a list of problems when a line can't be read. */
+export function parseRefundSchedule(text: string): { tiers: RefundTier[] } | { error: string } {
+  const tiers: RefundTier[] = [];
+  for (const line of lines(text)) {
+    const match = TIER_LINE.exec(line.replace(/before( the start)?/i, '').trim());
+    if (!match) return { error: `Write each rule like "7 days: 100%" (could not read "${line}")` };
+    const amount = Number(match[1]);
+    const hours = /^d/i.test(match[2]!) ? amount * 24 : amount;
+    tiers.push({ hoursBefore: hours, refundPercent: Number(match[3]) });
+  }
+  return { tiers };
+}
+
+/** Tiers → the text the form shows. */
+export function formatRefundSchedule(tiers: readonly RefundTier[]): string {
+  return [...tiers]
+    .sort((a, b) => b.hoursBefore - a.hoursBefore)
+    .map((t) =>
+      t.hoursBefore % 24 === 0 && t.hoursBefore > 0
+        ? `${t.hoursBefore / 24} ${t.hoursBefore === 24 ? 'day' : 'days'}: ${t.refundPercent}%`
+        : `${t.hoursBefore} ${t.hoursBefore === 1 ? 'hour' : 'hours'}: ${t.refundPercent}%`,
+    )
+    .join('\n');
+}
+
 /** Maps a schema path to the form field that shows its error. */
 function fieldFor(path: PropertyKey[]): string {
   const [head, child] = path.map(String);
   if (head === 'destination') return child === 'name' ? 'destinationName' : 'destinationCoords';
   if (head === 'meetingPoint') return child === 'name' ? 'meetingName' : 'meetingCoords';
   if (head === 'pricePaise') return 'priceRupees';
+  if (head === 'refundTiers') return 'refundSchedule';
   return head ?? 'form';
 }
 
@@ -105,6 +137,8 @@ export function toPackageInput(form: PackageForm): PackageFormResult {
   if (!endsAt) errors.endsAt = 'Choose the end date and time';
   if (pricePaise === null) errors.priceRupees = 'Enter the price in rupees, like 3499';
   if (capacity === null) errors.capacity = 'Enter how many people can join';
+  const schedule = parseRefundSchedule(form.refundSchedule);
+  if ('error' in schedule) errors.refundSchedule = schedule.error;
   if (Object.keys(errors).length > 0) return { ok: false, errors };
 
   const input = {
@@ -122,6 +156,7 @@ export function toPackageInput(form: PackageForm): PackageFormResult {
     inclusions: lines(form.inclusions),
     exclusions: lines(form.exclusions),
     cancellationPolicy: form.cancellationPolicy.trim(),
+    refundTiers: 'tiers' in schedule ? schedule.tiers : [],
     photoIds: form.photoIds,
   };
   const parsed = CreatePackageSchema.safeParse(input);
@@ -152,6 +187,7 @@ export function fromOwnPackage(pkg: OwnPackage): PackageForm {
     inclusions: pkg.inclusions.join('\n'),
     exclusions: pkg.exclusions.join('\n'),
     cancellationPolicy: pkg.cancellationPolicy,
+    refundSchedule: formatRefundSchedule(pkg.refundTiers),
     photoIds: pkg.photoIds,
   };
 }

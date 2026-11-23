@@ -381,7 +381,8 @@ response carries `emergencyNumber` for the app to show. Closing an alert clears 
 Paid, guided experiences (packages) sold by businesses that Voyago staff have verified. They are
 kept apart from free community trips: separate routes, separate tables, and every listing carries
 `commercial: true` and the business's name and verification. Voyago does not sell passenger
-transport. Bookings and payment come in milestone 13; until then `bookingOpen` is `false`.
+transport. Booking and payment are described in the next section; `bookingOpen` is `false` until
+a payment provider is set up.
 
 **My business (`/me/operator`)**
 
@@ -412,22 +413,102 @@ Package fields: `mode`, `activityType` (rides are `MOTORCYCLE_RIDE`, travel uses
 `endsAt` (after the start, at most 60 days), `pricePaise` (whole paise, ₹1 to ₹10,00,000, the
 total per person including taxes), `currency` (`INR`), `capacity` (1 to 200), `inclusions` (at
 least one), `exclusions`, `cancellationPolicy` (20 to 2,000 characters), `photoIds` (up to 8 of
-the operator's own uploads; the first is the cover).
+the operator's own uploads; the first is the cover), `refundTiers` (up to 6 of
+`{ hoursBefore, refundPercent }`; refunds can only stay the same or go down closer to the start;
+at least one is needed to publish).
 
 **Browsing (any signed-in member)**
 
-| Method | Path                      | Success | Description                                                                                                            |
-| ------ | ------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------- |
-| GET    | `/packages`               | 200     | Paginated cards on sale (published, verified business, future start). Filters `q`, `mode`, `activityType`, `operator`. |
-| GET    | `/packages/:id`           | 200     | Full terms: price, dates, seats left, inclusions, exclusions, cancellation policy, approximate meeting point.          |
-| GET    | `/packages/:id/questions` | 200     | Answered questions (no asker names) plus my own.                                                                       |
-| POST   | `/packages/:id/questions` | 201     | `{ question }` (5–500). Not on your own package (403); 3 per package and 20 a day (429).                               |
-| GET    | `/operators/:slug`        | 200     | A verified business's public page and its packages on sale.                                                            |
+| Method | Path                      | Success | Description                                                                                                                                                                                                           |
+| ------ | ------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/packages`               | 200     | Paginated cards on sale (published, verified business, future start). Filters `q`, `mode`, `activityType`, `operator`.                                                                                                |
+| GET    | `/packages/:id`           | 200     | Full terms: price, dates, seats left, inclusions, exclusions, cancellation policy, refund schedule, approximate meeting point, `bookingOpen` and `bookingClosedReason`, and `viewer.bookingId` when I hold a booking. |
+| GET    | `/packages/:id/questions` | 200     | Answered questions (no asker names) plus my own.                                                                                                                                                                      |
+| POST   | `/packages/:id/questions` | 201     | `{ question }` (5–500). Not on your own package (403); 3 per package and 20 a day (429).                                                                                                                              |
+| GET    | `/operators/:slug`        | 200     | A verified business's public page and its packages on sale.                                                                                                                                                           |
 
 A package that is not on sale is 404 to everyone except its business and moderators. The meeting
 point is rounded to about a kilometre (`approximate: true`) for everyone but the business. The
 business's contact details, address and GSTIN are never in public responses. Views are counted
 once a day per member. Packages can be reported with `targetType: COMMERCIAL_PACKAGE`.
+
+### Bookings and payments
+
+Customers book places on a package and pay on Razorpay's hosted checkout. Amounts are whole paise
+with an explicit currency (`INR`); the server prices every booking from the package, so the client
+only sends how many places it wants. A booking is confirmed **only** from Razorpay's own record of a
+captured payment (fetched by the server or received in a signed webhook) whose amount and currency
+match the booking. The app's return from checkout is never treated as proof of payment. Card and
+bank details never reach Voyago.
+
+**Customer**
+
+| Method | Path                     | Success | Description                                                                                                                                                                                                                                                                                                                                                                 |
+| ------ | ------------------------ | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/packages/:id/bookings` | 201     | `{ seats (1–10), idempotencyKey (16–100 of A–Z a–z 0–9 _ -), returnUrl? }`. Holds the places for 15 minutes and creates the provider order. The same key returns the same booking; a live hold on the package is returned instead of a second one. 403 own package, 409 not enough places ("Only N places left"), 503 when payments are not set up or the provider is down. |
+| GET    | `/me/bookings`           | 200     | My bookings, newest first (lapsed unpaid holds hidden).                                                                                                                                                                                                                                                                                                                     |
+| GET    | `/bookings/:id`          | 200     | One of mine: status, payment, refunds, the schedule agreed, what cancelling now returns (`cancellation`), `checkoutUrl` while unpaid, and the exact meeting point once confirmed. `returnUrl` query adds a return address to the payment link. 404 for anyone else.                                                                                                         |
+| POST   | `/bookings/:id/cancel`   | 200     | `{ reason? }`. An unpaid hold is released. A confirmed booking is refunded by its schedule, counted from the hours left before the start. 409 once started or not cancellable.                                                                                                                                                                                              |
+
+`returnUrl` must be the web app's origin (`APP_PUBLIC_URL`), `voyago://`, or `exp://` outside
+production; anything else is 400.
+
+**Business**
+
+| Method | Path                               | Success | Description                                                                                                                                   |
+| ------ | ---------------------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/me/operator/bookings`            | 200     | My business's bookings with the money split (total, commission, tax on it, payable to me); customer name only. Filters `packageId`, `status`. |
+| POST   | `/me/operator/bookings/:id/cancel` | 204     | `{ reason }`. Cancels a confirmed booking before the start; the customer always gets a full refund and is notified.                           |
+
+**Checkout and webhooks (no Voyago session)**
+
+| Method | Path                           | Success | Description                                                                                                                                                                                                                                              |
+| ------ | ------------------------------ | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/checkout/:id?e&r&s`          | 200     | The hosted payment page, opened from the signed `checkoutUrl`. Strict per-page CSP (nonce scripts, Razorpay only). 400 for a forged link, 410 when the hold has ended.                                                                                   |
+| POST   | `/checkout/:id/razorpay?e&r&s` | 303     | Where Razorpay's checkout posts back. Verifies the checkout signature, fetches the payment from Razorpay, applies it, then redirects to `returnUrl?booking=…&payment=paid                                                                                | failed | processing`. |
+| POST   | `/webhooks/razorpay`           | 200     | Razorpay webhooks, verified with `X-Razorpay-Signature` over the raw body. Stored once per `X-Razorpay-Event-Id`; repeats answer `{ status: "duplicate" }`. 400 for a bad signature (kept for investigation). A failure answers 5xx so Razorpay retries. |
+
+Handled events: `payment.authorized` (captured by the server), `payment.captured`,
+`payment.failed`, `order.paid`, `refund.processed`, `refund.failed`, `refund.created`.
+
+**Money rules**
+
+- Customers pay the listed price; there is no extra platform fee. Voyago's commission
+  (`PLATFORM_COMMISSION_BPS`, default 1000 = 10%) and GST on it (`COMMISSION_TAX_BPS`, default
+  1800 = 18%) come out of the business's share. The rates are fixed on the booking when it is made;
+  clients can't send them.
+- Every captured payment writes ledger lines: `GROSS`, `COMMISSION`, `COMMISSION_TAX`,
+  `OPERATOR_PAYABLE`, `PROVIDER_FEE` and `PROVIDER_FEE_TAX` (Razorpay's fee, borne by Voyago).
+  Every processed refund writes `REFUND` (negative) and proportional `COMMISSION_REVERSAL`,
+  `COMMISSION_TAX_REVERSAL` and `OPERATOR_PAYABLE_REVERSAL`. Parts always add up to the total.
+- A payment that arrives after its hold lapsed is confirmed if places are still free, otherwise
+  refunded in full automatically. A second payment on an already-paid order is refunded.
+- Payouts to businesses are manual for now: the ledger's operator payable is the amount owed.
+
+**Admin (`payments.read` for support and operations, `payments.manage` for operations)**
+
+| Method | Path                            | Permission        | Description                                                                                                                                            |
+| ------ | ------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| GET    | `/admin/bookings`               | `payments.read`   | Paginated; filters `status`, `q` (username, package, booking id, provider order, payment or refund id), `attention=true`.                              |
+| GET    | `/admin/bookings/:id`           | `payments.read`   | Payments, refunds, ledger lines and provider events (ids, statuses and amounts only).                                                                  |
+| POST   | `/admin/bookings/:id/reconcile` | `payments.manage` | Re-checks the order's payments and pending refunds with Razorpay and applies what it says. Audited.                                                    |
+| POST   | `/admin/bookings/:id/refund`    | `payments.manage` | `{ amountPaise?, reason }`. With an amount, a goodwill refund (the booking stands); without, everything left, which also cancels the booking. Audited. |
+| POST   | `/admin/refunds/:id/retry`      | `payments.manage` | Sends a failed refund again. Audited.                                                                                                                  |
+
+"Needs attention": a failed refund, a refund pending for over an hour, an amount mismatch, or money
+captured for a booking that does not hold its places. A sweep runs every minute: it checks lapsed
+holds for payments before releasing them, re-checks refunds pending for over 10 minutes, and marks
+confirmed bookings complete after the experience ends.
+
+**Setting up Razorpay**
+
+1. In `apps/api/.env`, set `PAYMENT_PROVIDER=razorpay`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`
+   and `RAZORPAY_WEBHOOK_SECRET` (test-mode keys start with `rzp_test_`), and `API_PUBLIC_URL` to
+   the address browsers use to reach the API.
+2. In the Razorpay dashboard, add a webhook to `{API_PUBLIC_URL}/api/v1/webhooks/razorpay` with the
+   same secret and the events above.
+3. Live keys (`rzp_live_`) are refused unless `PAYMENTS_LIVE_APPROVED=true`, which should only be
+   set after legal, provider and operational approval.
 
 ### Admin and moderation (`/api/v1/admin`)
 

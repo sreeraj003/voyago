@@ -15,6 +15,6 @@ import { IntegrationsController } from './integrations.controller.js';
       useValue: (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init),
     },
   ],
-  exports: [GoogleMapsService, CloudinaryService],
+  exports: [GoogleMapsService, CloudinaryService, HTTP_FETCH],
 })
 export class IntegrationsModule {}

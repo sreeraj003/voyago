@@ -132,6 +132,7 @@ export const NotificationSchema = z.object({
     username: z.string().optional(),
     conversationId: z.uuid().optional(),
     packageId: z.uuid().optional(),
+    bookingId: z.uuid().optional(),
     /** Which screen to open: a trip's safety page, or the operator's questions. */
     screen: z.enum(['safety', 'questions']).optional(),
   }),

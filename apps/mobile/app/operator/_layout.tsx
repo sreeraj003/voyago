@@ -18,6 +18,7 @@ export default function OperatorLayout() {
       <Stack.Screen name="profile" options={{ title: 'Business details' }} />
       <Stack.Screen name="documents" options={{ title: 'Verification documents' }} />
       <Stack.Screen name="questions" options={{ title: 'Customer questions' }} />
+      <Stack.Screen name="bookings" options={{ title: 'Bookings' }} />
       <Stack.Screen name="packages/new" options={{ title: 'New package' }} />
       <Stack.Screen name="packages/[id]" options={{ title: 'Package' }} />
     </Stack>

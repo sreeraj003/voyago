@@ -465,6 +465,10 @@ async function main(): Promise<void> {
         exclusions: ['Travel to Sakleshpur'],
         cancellationPolicy:
           'Sample policy: full refund up to 72 hours before departure, 50% up to 24 hours before.',
+        refundTiers: [
+          { hoursBefore: 72, refundPercent: 100 },
+          { hoursBefore: 24, refundPercent: 50 },
+        ],
         startsAt: nextSaturday(7, 2),
         endsAt: new Date(nextSaturday(7, 2).getTime() + 32 * 60 * 60 * 1000),
         meetingPointName: 'Sakleshpur bus stand',

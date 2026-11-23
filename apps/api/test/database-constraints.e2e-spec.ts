@@ -3,6 +3,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { randomUUID } from 'node:crypto';
 import { type Prisma, PrismaClient } from '../src/generated/prisma/client.js';
 import { geographyPoint, setPointSql } from '../src/database/geo.js';
+import { bookingFields } from './support/booking-fields.js';
 
 /**
  * Verifies the schema's integrity rules against the real Postgres/PostGIS database.
@@ -327,6 +328,7 @@ describe('check constraints', () => {
           seats: 1,
           unitPricePaise: 349_900,
           totalAmountPaise: 349_900,
+          ...bookingFields(349_900),
         },
       });
       await tx.payment.create({
@@ -365,6 +367,7 @@ describe('community trips stay separate from commercial bookings', () => {
           seats: 1,
           unitPricePaise: 349_900,
           totalAmountPaise: 349_900,
+          ...bookingFields(349_900),
         },
       });
     }, 'Bookings can only reference COMMERCIAL_PAID trips');
@@ -454,6 +457,7 @@ describe('community trips stay separate from commercial bookings', () => {
           unitPricePaise: 349_900,
           platformFeePaise: 5_000,
           totalAmountPaise: 704_800,
+          ...bookingFields(704_800, { platformFeePaise: 5_000 }),
         },
       });
       return booking.status;
