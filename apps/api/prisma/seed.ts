@@ -548,19 +548,21 @@ async function main(): Promise<void> {
           id: PLANS.explorer,
           code: 'EXPLORER_PRO_MONTHLY',
           name: 'Explorer Pro',
-          description: 'Proposed plan for travellers. Price under review.',
+          description:
+            'Saved searches with new-trip alerts, travel statistics and a profile accent.',
           pricePaise: 11_900,
           billingInterval: 'MONTHLY' as const,
-          features: { advancedFilters: true, unlimitedJoinRequests: true },
+          tier: 'EXPLORER_PRO' as const,
         },
         {
           id: PLANS.organiser,
           code: 'ORGANISER_PRO_MONTHLY',
           name: 'Organiser Pro',
-          description: 'Proposed plan for frequent organisers. Price under review.',
+          description:
+            'Everything in Explorer Pro, plus trip insights, bulk join-request decisions and an organiser headline.',
           pricePaise: 69_900,
           billingInterval: 'MONTHLY' as const,
-          features: { featuredTrips: 2, organiserAnalytics: true },
+          tier: 'ORGANISER_PRO' as const,
         },
       ];
       for (const plan of plans) {

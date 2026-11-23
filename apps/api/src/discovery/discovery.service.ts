@@ -101,7 +101,12 @@ export class DiscoveryService {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
-  async search(user: AuthUser, query: SearchQuery): Promise<PageResponse<TripCard>> {
+  /** `publishedAfter` is for saved-search alerts: only trips published since then. */
+  async search(
+    user: AuthUser,
+    query: SearchQuery,
+    options: { publishedAfter?: Date } = {},
+  ): Promise<PageResponse<TripCard>> {
     const offset = decodeOffsetCursor(query.cursor);
     const near = this.near(query);
     const tsQuery = query.q ? toPrefixTsQuery(query.q) : null;
@@ -148,6 +153,9 @@ export class DiscoveryService {
       );
     }
     if (near) filters.push(withinSql(near));
+    if (options.publishedAfter) {
+      filters.push(Prisma.sql`t.published_at > ${options.publishedAfter}`);
+    }
 
     const textRank = tsQuery
       ? Prisma.sql`ts_rank_cd(t.search_vector, to_tsquery('simple', ${tsQuery}), 32)`

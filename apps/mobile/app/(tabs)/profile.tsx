@@ -52,6 +52,13 @@ export default function ProfileScreen() {
         onPress={() => router.push('/explore?tab=communities&mine=1')}
       />
       <Button title="My bookings" variant="link" onPress={() => router.push('/bookings')} />
+      <Button title="Plans and billing" variant="link" onPress={() => router.push('/plans')} />
+      <Button
+        title="Saved searches"
+        variant="link"
+        onPress={() => router.push('/plans/saved-searches')}
+      />
+      <Button title="Travel stats" variant="link" onPress={() => router.push('/plans/stats')} />
       <Button
         title="My business (paid experiences)"
         variant="link"

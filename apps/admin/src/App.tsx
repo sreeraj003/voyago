@@ -13,6 +13,8 @@ import { OperatorDetailPage } from './pages/OperatorDetailPage';
 import { OperatorsPage } from './pages/OperatorsPage';
 import { ReportDetailPage } from './pages/ReportDetailPage';
 import { ReportsPage } from './pages/ReportsPage';
+import { SubscriptionDetailPage } from './pages/SubscriptionDetailPage';
+import { SubscriptionsPage } from './pages/SubscriptionsPage';
 import { TripDetailPage } from './pages/TripDetailPage';
 import { TripsPage } from './pages/TripsPage';
 import { UserDetailPage } from './pages/UserDetailPage';
@@ -27,6 +29,7 @@ const NAV: { to: string; title: string; permission: AdminPermission }[] = [
   { to: '/trips', title: 'Trips', permission: 'trips.read' },
   { to: '/operators', title: 'Operators', permission: 'operators.read' },
   { to: '/bookings', title: 'Payments', permission: 'payments.read' },
+  { to: '/subscriptions', title: 'Subscriptions', permission: 'payments.read' },
   { to: '/audit', title: 'Audit log', permission: 'audit.read' },
 ];
 
@@ -101,6 +104,11 @@ export function App() {
           <Route path="/operators/:id" element={guard('operators.read', <OperatorDetailPage />)} />
           <Route path="/bookings" element={guard('payments.read', <BookingsPage />)} />
           <Route path="/bookings/:id" element={guard('payments.read', <BookingDetailPage />)} />
+          <Route path="/subscriptions" element={guard('payments.read', <SubscriptionsPage />)} />
+          <Route
+            path="/subscriptions/:id"
+            element={guard('payments.read', <SubscriptionDetailPage />)}
+          />
           <Route path="/audit" element={guard('audit.read', <AuditPage />)} />
           <Route path="/login" element={<Navigate to="/" replace />} />
           <Route path="*" element={<h1>Page not found</h1>} />

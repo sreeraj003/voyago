@@ -7,5 +7,6 @@ import { ParticipationService } from './participation.service.js';
   imports: [TripsModule],
   controllers: [ParticipationController],
   providers: [ParticipationService],
+  exports: [ParticipationService],
 })
 export class ParticipationModule {}

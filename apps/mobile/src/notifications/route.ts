@@ -13,6 +13,9 @@ export function routeFor(data: Record<string, unknown>): Href | null {
   if (conversationId) return `/chats/${conversationId}`;
   if (tripId && text('screen') === 'safety') return `/trips/${tripId}/safety`;
   if (text('screen') === 'questions') return '/operator/questions';
+  const savedSearchId = text('savedSearchId');
+  if (savedSearchId && !tripId) return `/plans/saved-searches?id=${savedSearchId}`;
+  if (text('screen') === 'subscription') return '/plans';
   const bookingId = text('bookingId');
   if (bookingId) return `/bookings/${bookingId}`;
   const packageId = text('packageId');

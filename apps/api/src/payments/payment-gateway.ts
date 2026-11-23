@@ -29,6 +29,26 @@ export type GatewayRefund = {
 
 export type GatewayOrder = { id: string; amountPaise: number; currency: string };
 
+/** What the provider says about a recurring subscription. Times are Dates; null when unset. */
+export type GatewaySubscription = {
+  id: string;
+  planId: string;
+  status:
+    | 'created'
+    | 'authenticated'
+    | 'active'
+    | 'pending'
+    | 'halted'
+    | 'cancelled'
+    | 'completed'
+    | 'expired'
+    | 'paused';
+  currentStart: Date | null;
+  currentEnd: Date | null;
+  chargeAt: Date | null;
+  endedAt: Date | null;
+};
+
 /**
  * The payment provider, behind one interface. Razorpay is the provider implemented (Orders,
  * Checkout, Payments, Refunds and webhooks). Card details never reach Voyago: customers pay on
@@ -62,6 +82,29 @@ export abstract class PaymentGateway {
   /** The signature the checkout returns for `orderId|paymentId`. */
   abstract verifyCheckoutSignature(orderId: string, paymentId: string, signature: string): boolean;
   abstract verifyWebhookSignature(rawBody: Buffer, signature: string): boolean;
+
+  // ── Subscriptions ──
+  abstract createPlan(input: {
+    name: string;
+    description: string;
+    amountPaise: number;
+    currency: string;
+    interval: 'MONTHLY' | 'YEARLY';
+  }): Promise<{ id: string }>;
+  abstract createSubscription(input: {
+    planId: string;
+    totalCount: number;
+    notes: Record<string, string>;
+  }): Promise<GatewaySubscription>;
+  abstract fetchSubscription(id: string): Promise<GatewaySubscription>;
+  /** `atCycleEnd`: no more charges, the current period stays paid for. */
+  abstract cancelSubscription(id: string, atCycleEnd: boolean): Promise<GatewaySubscription>;
+  /** The signature the checkout returns for `paymentId|subscriptionId`. */
+  abstract verifySubscriptionSignature(
+    subscriptionId: string,
+    paymentId: string,
+    signature: string,
+  ): boolean;
 }
 
 export function hmacHex(secret: string, payload: string | Buffer): string {
@@ -107,6 +150,31 @@ export function fromRazorpayPayment(p: RazorpayPaymentEntity): GatewayPayment {
     method: p.method ? String(p.method).slice(0, 30) : null,
     errorCode: p.error_code ?? null,
     errorDescription: p.error_description ? String(p.error_description).slice(0, 500) : null,
+  };
+}
+
+export type RazorpaySubscriptionEntity = {
+  id: string;
+  plan_id: string;
+  status: GatewaySubscription['status'];
+  current_start?: number | null;
+  current_end?: number | null;
+  charge_at?: number | null;
+  ended_at?: number | null;
+};
+
+const fromUnix = (seconds: number | null | undefined) =>
+  typeof seconds === 'number' && seconds > 0 ? new Date(seconds * 1000) : null;
+
+export function fromRazorpaySubscription(s: RazorpaySubscriptionEntity): GatewaySubscription {
+  return {
+    id: s.id,
+    planId: s.plan_id,
+    status: s.status,
+    currentStart: fromUnix(s.current_start),
+    currentEnd: fromUnix(s.current_end),
+    chargeAt: fromUnix(s.charge_at),
+    endedAt: fromUnix(s.ended_at),
   };
 }
 
@@ -213,6 +281,74 @@ export class RazorpayGateway extends PaymentGateway {
   verifyWebhookSignature(rawBody: Buffer, signature: string): boolean {
     if (!this.config.RAZORPAY_WEBHOOK_SECRET) return false;
     return sameSignature(hmacHex(this.config.RAZORPAY_WEBHOOK_SECRET, rawBody), signature);
+  }
+
+  async createPlan(input: {
+    name: string;
+    description: string;
+    amountPaise: number;
+    currency: string;
+    interval: 'MONTHLY' | 'YEARLY';
+  }): Promise<{ id: string }> {
+    const plan = await this.call<{ id: string }>('POST', '/plans', {
+      period: input.interval === 'MONTHLY' ? 'monthly' : 'yearly',
+      interval: 1,
+      item: {
+        name: input.name,
+        description: input.description.slice(0, 250),
+        amount: input.amountPaise,
+        currency: input.currency,
+      },
+    });
+    return { id: plan.id };
+  }
+
+  async createSubscription(input: {
+    planId: string;
+    totalCount: number;
+    notes: Record<string, string>;
+  }): Promise<GatewaySubscription> {
+    return fromRazorpaySubscription(
+      await this.call<RazorpaySubscriptionEntity>('POST', '/subscriptions', {
+        plan_id: input.planId,
+        total_count: input.totalCount,
+        quantity: 1,
+        // Razorpay emails the customer about charges and failures as well.
+        customer_notify: 1,
+        notes: input.notes,
+      }),
+    );
+  }
+
+  async fetchSubscription(id: string): Promise<GatewaySubscription> {
+    return fromRazorpaySubscription(
+      await this.call<RazorpaySubscriptionEntity>(
+        'GET',
+        `/subscriptions/${encodeURIComponent(id)}`,
+      ),
+    );
+  }
+
+  async cancelSubscription(id: string, atCycleEnd: boolean): Promise<GatewaySubscription> {
+    return fromRazorpaySubscription(
+      await this.call<RazorpaySubscriptionEntity>(
+        'POST',
+        `/subscriptions/${encodeURIComponent(id)}/cancel`,
+        { cancel_at_cycle_end: atCycleEnd ? 1 : 0 },
+      ),
+    );
+  }
+
+  verifySubscriptionSignature(
+    subscriptionId: string,
+    paymentId: string,
+    signature: string,
+  ): boolean {
+    if (!this.config.RAZORPAY_KEY_SECRET) return false;
+    return sameSignature(
+      hmacHex(this.config.RAZORPAY_KEY_SECRET, `${paymentId}|${subscriptionId}`),
+      signature,
+    );
   }
 
   private async call<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {

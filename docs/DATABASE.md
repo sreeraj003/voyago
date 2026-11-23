@@ -261,6 +261,32 @@ fixed id beginning `5eed0000`, so re-running changes nothing. The `dev_*` accoun
 - Route data (`trips.origin/destination`, `trip_stops`) is planning data only. Live location is a
   separate store (Redis, milestone 11) and never written to these tables.
 
+## Milestone 14 changes (`20261126090000_subscription_pending`, `20261126090100_subscriptions`)
+
+- `SubscriptionStatus` gains `PENDING` (waiting for the first payment), in its own migration
+  because Postgres can't use a new enum value in the transaction that adds it. New enum
+  `SubscriptionTier` (`EXPLORER_PRO`, `ORGANISER_PRO`).
+- `subscription_plans` gains `tier` (backfilled from the code), `provider_plan_id` and
+  `provider_plan_price_paise` (the Razorpay plan made for the current price; cleared when the price
+  changes). Checks: `subscription_plans_price_min` (at least ₹1) and
+  `subscription_plans_provider_plan`.
+- `subscriptions`: `status` defaults to `PENDING`; the period columns are nullable until the first
+  payment. New `price_paise` and `currency` (the price the member signed up at),
+  `idempotency_key` (unique per member; existing rows got `legacy-<id>`), `cancellation_reason`,
+  `ended_at`, `provider_status`, `reminded_for_period_end` (one renewal reminder per period).
+  Checks: `subscriptions_period_order`, `subscriptions_period_when_paid` (active, trialing and
+  past-due ones have a period), `subscriptions_price_positive`, `subscriptions_currency_format`,
+  `subscriptions_cancelled_at`. `subscriptions_one_live_per_user` now covers `PENDING`,
+  `TRIALING`, `ACTIVE` and `PAST_DUE`.
+- `payment_events.subscription_id` (nullable, set null on delete) with an index, so webhooks and
+  checkout returns are kept against the subscription they touched.
+- `users.accent_color` (`users_accent_color`, one of the palette) and `users.profile_headline`
+  (`users_profile_headline_present`).
+- New `saved_searches`: member, name (unique per member), the discovery query as JSON
+  (`saved_searches_query_object`, `saved_searches_name_present`), `alerts`, `last_alerted_at`. Trigger
+  `saved_searches_enforce_max` refuses an 11th search for a member (`saved_searches_max`), even
+  under parallel requests. Index on `alerts` for the hourly alert sweep.
+
 ## Milestone 13 changes (`20261125090000_bookings_payments`)
 
 - New enums `CancellationActor` (`CUSTOMER`, `OPERATOR`, `ADMIN`, `SYSTEM`), `RefundStatus`

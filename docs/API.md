@@ -510,6 +510,110 @@ confirmed bookings complete after the experience ends.
 3. Live keys (`rzp_live_`) are refused unless `PAYMENTS_LIVE_APPROVED=true`, which should only be
    set after legal, provider and operational approval.
 
+### Subscriptions and paid features
+
+Two paid plans, billed monthly through Razorpay Subscriptions: **Explorer Pro** (₹119 a month in
+the seed) and **Organiser Pro** (₹699 a month). Prices live in `subscription_plans` and staff
+change them in the admin app; a change applies to new subscriptions only. What a member may use is
+decided by the server from the subscription it holds and the time now (entitlements), never by the
+app. Safety, blocking, reporting, messages, free trips and every discovery filter stay free.
+
+| Entitlement          | Explorer Pro | Organiser Pro | What it unlocks                                       |
+| -------------------- | ------------ | ------------- | ----------------------------------------------------- |
+| `saved_searches`     | ✓            | ✓             | Save up to 10 discovery searches and run them again   |
+| `trip_alerts`        | ✓            | ✓             | A notification when a new trip matches a saved search |
+| `travel_stats`       | ✓            | ✓             | Activity, distance, destinations, monthly counts      |
+| `profile_style`      | ✓            | ✓             | An accent colour on the public profile                |
+| `organiser_profile`  |              | ✓             | A headline on the public profile                      |
+| `organiser_insights` |              | ✓             | Requests, decisions, fill rate and leavers per trip   |
+| `bulk_join_requests` |              | ✓             | Approve or decline up to 50 requests at once          |
+
+A paid feature used without the plan answers **403** with a detail
+`{ path: "UPGRADE_REQUIRED", message: "EXPLORER_PRO" | "ORGANISER_PRO" }` and a message naming the
+plan, so the app can show an upgrade prompt.
+
+**Member**
+
+| Method | Path                      | Success | Description                                                                                                                                                                                                                                                                                                                                              |
+| ------ | ------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/subscriptions/plans`    | 200     | `{ plans, alwaysFree, terms, unavailableReason }`. Each plan has its price, interval, entitlements and `available` (on sale and payments set up).                                                                                                                                                                                                        |
+| GET    | `/me/subscription`        | 200     | `{ tier, entitlements, subscription }`: the latest subscription with status, paid period, `renewsAt`, `entitled`, payments, `checkoutUrl` while the first payment is due, and `actions`. `returnUrl` query adds a return address to the payment link.                                                                                                    |
+| POST   | `/me/subscription`        | 201     | `{ planCode, idempotencyKey, returnUrl? }`. Creates the subscription waiting for its first payment (`PENDING`) and returns it with `checkoutUrl`. The same key, or a new one while one is waiting on the same plan, returns the same one. 404 unknown or off-sale plan, 409 while a plan is still running, 503 when not on sale or the provider is down. |
+| POST   | `/me/subscription/cancel` | 200     | `{ reason? }`. Stops renewals at the provider; the paid month stays usable to its end and nothing more is charged. An unpaid one is dropped. 409 with nothing to cancel.                                                                                                                                                                                 |
+
+**Paid features**
+
+| Method | Path                            | Needs                | Description                                                                                                                                                                                                                        |
+| ------ | ------------------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/me/saved-searches`            | (free)               | My saved searches. Listing and deleting stay free after a plan ends.                                                                                                                                                               |
+| POST   | `/me/saved-searches`            | `saved_searches`     | `{ name, query, alerts? }`. `query` holds discovery search values and is checked exactly like a search (400 `query.<field>`); paging is dropped. 409 duplicate name or over 10. `alerts: true` needs `trip_alerts`.                |
+| PATCH  | `/me/saved-searches/:id`        | `saved_searches`     | `{ name?, alerts? }`. Turning alerts on starts from now.                                                                                                                                                                           |
+| DELETE | `/me/saved-searches/:id`        | (free)               | 204.                                                                                                                                                                                                                               |
+| GET    | `/me/saved-searches/:id/trips`  | `saved_searches`     | Runs it: the same results, blocks and visibility rules as `/discovery/search`. `limit`, `cursor`.                                                                                                                                  |
+| GET    | `/me/stats`                     | (basic free)         | `{ basic: { tripsJoined, tripsOrganised, upcoming }, enhanced }`; `enhanced` (completed trips, by activity, planned km, destinations, last 12 months, companions) needs `travel_stats`, otherwise null.                            |
+| GET    | `/me/organiser/insights`        | `organiser_insights` | For my last 50 published trips: capacity, participants, fill %, requests by outcome, average hours to decide, people who left; and totals.                                                                                         |
+| POST   | `/trips/:id/join-requests/bulk` | `bulk_join_requests` | `{ action: approve or reject, requestIds (1–50), reason? }`. Each request goes through the single-decision checks (organiser rights, capacity, blocks). `{ done, failed[{ id, reason }] }`.                                        |
+| GET    | `/me/profile/style`             | (free)               | `{ accentColor, headline }`.                                                                                                                                                                                                       |
+| PATCH  | `/me/profile/style`             | see description      | `{ accentColor? (teal, indigo, amber, rose, forest, slate, sunset, ocean, or null), headline? (3–120 characters, or null) }`. Setting an accent needs `profile_style`, a headline `organiser_profile`; clearing is always allowed. |
+
+Public profiles carry `style`; the accent and headline appear only while the member's plan
+includes them (stored values are kept and come back with a new subscription).
+
+New-trip alerts run hourly: for each saved search with alerts on, owned by a member whose plan
+includes alerts, trips published since the last check send one notification (`data.savedSearchId`,
+and `tripId` when there is exactly one).
+
+**Checkout (no Voyago session)**
+
+| Method | Path                                         | Success | Description                                                                                                                                                                                        |
+| ------ | -------------------------------------------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/checkout/subscriptions/:id?e&r&s`          | 200     | The payment page for the first month (signed link, valid an hour). Shows the price and the renewal terms; the member presses "Pay … and subscribe" to open Razorpay. 400 forged link, 410 expired. |
+| POST   | `/checkout/subscriptions/:id/razorpay?e&r&s` | 303     | Razorpay's post-back. Verifies the subscription signature (`payment_id                                                                                                                             | subscription_id`), fetches the subscription and the payment from Razorpay, then redirects to `returnUrl?subscription=…&payment=paid | failed | processing`. |
+
+**Billing rules**
+
+- **Activation:** only from Razorpay's own records: the subscription `active` with a paid period,
+  and the payment's amount and currency equal to the price the member was shown. A mismatch is
+  stored as `AMOUNT_MISMATCH` and the plan stays off.
+- **Webhooks:** `subscription.activated`, `subscription.charged`, `subscription.pending`,
+  `subscription.halted`, `subscription.cancelled`, `subscription.completed`,
+  `subscription.updated` (and the payment events above). Each is stored once per event id; the
+  subscription is then fetched from Razorpay and applied, so repeats and any order give the same
+  state. Payments are stored once per provider payment id.
+- **Renewal:** `subscription.charged` moves the paid period forward and records the payment. A
+  reminder goes out 3 days before every renewal.
+- **Failed renewal:** the subscription becomes `PAST_DUE`, the member is told, and the plan keeps
+  working for 24 hours past the paid period while Razorpay retries. After that the paid features
+  stop at once (decided from the clock, no webhook needed) and the sweep marks it `EXPIRED`.
+- **Cancellation:** renewals stop at Razorpay at the end of the cycle; the member keeps the plan to
+  the end of the paid month, with no partial refund. When the month ends the member is told and
+  is on the free plan. They can subscribe again then.
+- **Refunds:** by support, for example a renewal charged by mistake (within 7 days, as the terms
+  say): end now and refund the last payment in full.
+- **One plan at a time:** a member can't start a second subscription while one is running; there
+  is no mid-month upgrade yet.
+- **Unpaid:** a subscription waiting for its first payment for over a day is dropped.
+
+**Admin (`payments.read` for support and operations, `payments.manage` for operations)**
+
+| Method | Path                                 | Permission        | Description                                                                                                                                                                             |
+| ------ | ------------------------------------ | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET    | `/admin/subscription-plans`          | `payments.read`   | Every plan, on sale or not, with current subscribers.                                                                                                                                   |
+| PATCH  | `/admin/subscription-plans/:id`      | `payments.manage` | `{ pricePaise? (≥ 100), isActive?, description?, reason }`. A price change applies to new subscriptions only (a new Razorpay plan is made on the next subscribe). Audited.              |
+| GET    | `/admin/subscriptions`               | `payments.read`   | Paginated; filters `status`, `q` (username, member or subscription id, provider subscription or payment id).                                                                            |
+| GET    | `/admin/subscriptions/:id`           | `payments.read`   | With its payments and `actions` (`reconcile`, `cancel_now`, `refund_last`).                                                                                                             |
+| POST   | `/admin/subscriptions/:id/reconcile` | `payments.manage` | Fetches it from Razorpay and applies it. `{ result, subscription }`. Audited.                                                                                                           |
+| POST   | `/admin/subscriptions/:id/end`       | `payments.manage` | `{ refundLast?, reason }`. Cancels at Razorpay now, paid features stop, and optionally refunds the last payment in full. Run again with `refundLast` to retry a failed refund. Audited. |
+
+**Setting up subscriptions**
+
+1. Payments must be set up first (see "Setting up Razorpay" above), and Razorpay Subscriptions
+   must be enabled on the account.
+2. `SUBSCRIPTIONS_ENABLED=true` (the default) puts the plans on sale; `false` shows them as "not
+   on sale yet" and refuses to start one (503).
+3. Add the `subscription.*` events to the Razorpay webhook. Razorpay plans are created by the API
+   the first time someone subscribes at a price; nothing has to be set up by hand.
+
 ### Admin and moderation (`/api/v1/admin`)
 
 Staff only. Every route declares a permission and is checked on the server against the caller's

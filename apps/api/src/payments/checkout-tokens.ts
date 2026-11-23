@@ -36,7 +36,23 @@ export class CheckoutTokens {
     return `${this.config.API_PUBLIC_URL}/api/v1/checkout/${bookingId}?${params.toString()}`;
   }
 
-  /** The return address of a valid, unexpired link; throws otherwise. */
+  /** The payment page for a subscription's first payment (signed separately from bookings). */
+  subscriptionCheckoutUrl(
+    subscriptionId: string,
+    expiresAt: Date,
+    returnUrl: string | null,
+  ): string {
+    const e = String(expiresAt.getTime());
+    const r = returnUrl ?? '';
+    const params = new URLSearchParams({ e, r, s: this.sign(`sub:${subscriptionId}`, e, r) });
+    return `${this.config.API_PUBLIC_URL}/api/v1/checkout/subscriptions/${subscriptionId}?${params.toString()}`;
+  }
+
+  verifySubscription(subscriptionId: string, e: string, r: string, s: string): string | null {
+    return this.verify(`sub:${subscriptionId}`, e, r, s);
+  }
+
+  /** The return address of a valid link (expiry is checked separately); throws otherwise. */
   verify(bookingId: string, e: string, r: string, s: string): string | null {
     if (!/^\d{10,16}$/.test(e) || !sameSignature(this.sign(bookingId, e, r), s)) {
       throw new BadRequestException('This payment link is not valid');

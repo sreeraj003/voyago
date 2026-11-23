@@ -1,3 +1,4 @@
+import { UPGRADE_REQUIRED } from '@voyago/shared';
 import { useState } from 'react';
 import { ApiRequestError } from '../api/http';
 
@@ -14,7 +15,11 @@ export function useFormError() {
       setFields({});
     },
     capture: (error: unknown) => {
-      if (error instanceof ApiRequestError) {
+      if (error instanceof ApiRequestError && UPGRADE_REQUIRED in error.fieldErrors) {
+        // A paid feature: the message names the plan; there is no field to fix.
+        setFields({});
+        setMessage(error.message);
+      } else if (error instanceof ApiRequestError) {
         setFields(error.fieldErrors);
         setMessage(
           Object.keys(error.fieldErrors).length > 0

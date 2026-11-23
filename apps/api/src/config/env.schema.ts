@@ -145,6 +145,17 @@ export const EnvSchema = z
     COMMISSION_TAX_BPS: z.coerce.number().int().min(0).max(5000).default(1800),
     /** Public base URL of this API, for the provider's checkout return address. */
     API_PUBLIC_URL: z.url().default('http://localhost:3000'),
+
+    // ── Subscriptions (milestone 14) ───────────────────────────────────────────
+    /**
+     * Whether members can buy Explorer Pro and Organiser Pro (needs PAYMENT_PROVIDER too). Set to
+     * `false` to hide paid plans while repeat use is still being proven. Existing subscriptions keep
+     * working either way. Prices are set per plan in the admin app.
+     */
+    SUBSCRIPTIONS_ENABLED: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((v) => v === 'true'),
   })
   .superRefine((env, ctx) => {
     const cloudinary = [

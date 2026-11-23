@@ -14,6 +14,7 @@ import { ReportForm } from '../../src/components/ReportForm';
 import { labelFor } from '../../src/trips/labels';
 import { radius, spacing, typography } from '../../src/theme/tokens';
 import { useTheme } from '../../src/theme/use-theme';
+import { ACCENT_HEX } from '../../src/subscriptions/plans';
 
 export default function UserProfileScreen() {
   const { username } = useLocalSearchParams<{ username: string }>();
@@ -69,10 +70,23 @@ function Profile({ profile }: { profile: PublicProfile }) {
 
   return (
     <>
-      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+          profile.style.accentColor
+            ? { borderTopWidth: 6, borderTopColor: ACCENT_HEX[profile.style.accentColor] }
+            : null,
+        ]}
+      >
         <Text accessibilityRole="header" style={[styles.title, { color: colors.text }]}>
           {profile.displayName}
         </Text>
+        {profile.style.headline ? (
+          <Text style={[styles.body, styles.bold, { color: colors.text }]}>
+            {profile.style.headline}
+          </Text>
+        ) : null}
         <Text style={[styles.caption, { color: colors.textMuted }]}>
           @{profile.username} · {state.followerCount}{' '}
           {state.followerCount === 1 ? 'follower' : 'followers'} · {state.followingCount} following

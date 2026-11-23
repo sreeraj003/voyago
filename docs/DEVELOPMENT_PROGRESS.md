@@ -18,9 +18,104 @@ verified before the next starts.
 | 11  | Live location and safety workflows          | Done        |
 | 12  | Commercial operators and packages           | Done        |
 | 13  | Bookings, payments, commissions and refunds | Done        |
-| 14  | Subscriptions and monetisation              | Not started |
+| 14  | Subscriptions and monetisation              | Done        |
 | 15  | Analytics, observability and operations     | Not started |
 | 16  | Security, testing, launch readiness, deploy | Not started |
+
+---
+
+## Milestone 14: Subscriptions and monetisation (2026-11-23)
+
+### Implemented
+
+- **Plans:** Free, Explorer Pro (₹119 a month) and Organiser Pro (₹699 a month), stored in
+  `subscription_plans` so prices are configurable without a release. The plans page lists what each
+  includes, what is **always free** (free trips, every discovery filter, profiles and following,
+  messages, live location, SOS, emergency contacts, blocking and reporting) and the billing terms
+  in plain words.
+- **Entitlements on the server:** every paid endpoint asks `EntitlementsService`, which decides
+  from the stored subscription and the clock. A plan that ran out stops working at once, even if
+  no webhook ever arrives. Without the plan an endpoint answers 403 naming the plan
+  (`UPGRADE_REQUIRED`), which the app turns into an upgrade prompt.
+- **Paid features:** saved searches (up to 10, checked like a search, never storing location or
+  dates) with hourly new-trip alerts, detailed travel statistics (the basic counts stay free),
+  a profile accent colour, and for Organiser Pro: trip insights (requests by outcome, fill rate,
+  time to decide, leavers), approving or declining up to 50 join requests at once (each checked
+  like a single decision), and a profile headline.
+- **Subscribing:** Razorpay Subscriptions. The member chooses a plan, sees the price and renewal
+  terms on a Voyago payment page and presses "Pay … and subscribe" (nothing opens by itself). The
+  plan switches on only from Razorpay's own records of the subscription and the payment, with the
+  amount equal to the price shown. Idempotency keys make retries safe; one plan runs at a time.
+- **Renewals and failures:** signed webhooks are stored once per event, then the subscription is
+  re-fetched from Razorpay and applied, so repeats and any order give the same state. Renewals
+  move the paid period forward; a reminder goes out 3 days before each one. A failed renewal marks
+  the plan past due and tells the member; it keeps working 24 hours past the paid period while
+  Razorpay retries, then ends. A sweep every 10 minutes sends reminders, ends lapsed plans, closes
+  finished cancellations and drops unpaid attempts after a day.
+- **Cancelling:** one button in the app. Renewals stop at Razorpay; the member keeps the plan to
+  the end of the month paid for and is never charged again. No partial refunds; support can end a
+  plan now and refund the last payment in full (for example a renewal charged by mistake).
+- **No dark patterns:** no automatic checkout, no pre-ticked upgrades, cancellation in the same
+  place as subscribing, reminders before every renewal, and price changes that never touch an
+  existing subscription. Nothing paid is ranked or placed in discovery.
+- **Admin app:** a Subscriptions section: plans with subscribers, change a price or take a plan off
+  sale (operations, with a reason), find a member's subscription, check it with Razorpay, end it
+  now with or without refunding the last payment. All audited.
+- **Mobile:** Plans and billing (compare plans, always-free list, terms, subscribe, pay, payments,
+  cancel with a clear note of what happens), Save this search on Explore, Saved searches (run,
+  alerts on or off, delete), Travel stats, Organiser insights, Profile style (accent and headline),
+  Approve all on join requests, the accent and headline on public profiles, and notification links
+  to the plan or the saved search.
+- **Switch:** `SUBSCRIPTIONS_ENABLED` (default `true`) puts plans on sale; payments must be set up
+  too, otherwise the plans page says so and subscribing answers 503.
+
+### Database changes
+
+Migrations `20261126090000_subscription_pending` and `20261126090100_subscriptions`; see
+`docs/DATABASE.md`.
+
+### APIs
+
+`GET /subscriptions/plans`, `GET|POST /me/subscription`, `POST /me/subscription/cancel`,
+`GET|POST /me/saved-searches`, `PATCH|DELETE /me/saved-searches/:id`,
+`GET /me/saved-searches/:id/trips`, `GET /me/stats`, `GET /me/organiser/insights`,
+`POST /trips/:id/join-requests/bulk`, `GET|PATCH /me/profile/style`,
+`GET /checkout/subscriptions/:id`, `POST /checkout/subscriptions/:id/razorpay`,
+`GET /admin/subscription-plans`, `PATCH /admin/subscription-plans/:id`,
+`GET /admin/subscriptions`, `GET /admin/subscriptions/:id`,
+`POST /admin/subscriptions/:id/reconcile|end`. Public profiles gain `style`. See `docs/API.md`,
+"Subscriptions and paid features", which also holds the pricing and billing rules.
+
+### Tests
+
+- 21 new end-to-end tests (264 in total) against an in-memory stand-in for Razorpay's Plans,
+  Subscriptions, Payments and Refunds APIs: plans and terms; every paid feature refused for a
+  free member with the plan it needs, while the free parts keep working; starting a subscription
+  and idempotent retries; the payment page and a tampered link; activation by checkout return
+  (forged signature refused) and by webhook; duplicate webhooks; amount mismatch; a second
+  subscription refused; saved searches (validation, cap, ownership) and one alert per new trip;
+  profile style shown only while entitled; bulk approvals stopping at capacity; insights; detailed
+  stats; renewal; failed renewal, the grace day, expiry by the clock and by the sweep;
+  cancellation keeping the paid month, no further charge, alerts stopping and subscribing again;
+  price changes for new subscriptions only; taking a plan off sale; support ending a plan with a
+  refund (support refused, operations allowed, audited); reconcile; plans switched off.
+- Unit tests: tiers, entitlements and the request schemas (shared, 49 in total); ending a
+  subscription with a refund (admin, 15); subscription notes, upgrade prompts, saved-search
+  queries and notification routes (mobile, 62).
+
+### Outstanding
+
+- **Live billing is off** with payments (see milestone 13): legal review of the subscription
+  terms, Razorpay Subscriptions enabled on an activated account, and `PAYMENTS_LIVE_APPROVED=true`.
+- Tested against a stand-in for Razorpay's documented Subscriptions API, not Razorpay's test mode.
+  Add test keys, enable Subscriptions in the Razorpay dashboard and add the `subscription.*`
+  webhook events to try it end to end.
+- No switching plans mid-month: a member cancels and subscribes to the other plan when the month
+  ends. Upgrades with proration are a follow-up.
+- Invoices with GST for subscriptions are not generated yet.
+- Promotion credits and sponsored listings from the spec are not built: they need clear
+  "Sponsored" labelling rules and a review of how they affect discovery ranking first.
+- The prices are the brief's proposal; whether members will pay them still needs validating.
 
 ---
 

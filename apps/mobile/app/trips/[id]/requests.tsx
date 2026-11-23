@@ -4,6 +4,9 @@ import { useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { approveRequest, listTripRequests, rejectRequest } from '../../../src/api/participation';
+import { bulkJoinRequests } from '../../../src/api/subscriptions';
+import { UpgradePrompt } from '../../../src/components/UpgradePrompt';
+import { upgradeTier } from '../../../src/subscriptions/plans';
 import { useFormError } from '../../../src/auth/use-form-error';
 import { Button, FormMessage, TextField } from '../../../src/components/Form';
 import { FormScreen } from '../../../src/components/FormScreen';
@@ -31,6 +34,7 @@ export default function JoinRequestsScreen() {
           No requests waiting. New ones also appear in your inbox.
         </FormMessage>
       ) : null}
+      {items.length > 1 ? <ApproveAll tripId={id} requests={items} /> : null}
       {items.map((request) => (
         <RequestCard key={request.id} tripId={id} request={request} />
       ))}
@@ -43,6 +47,42 @@ export default function JoinRequestsScreen() {
         />
       ) : null}
     </FormScreen>
+  );
+}
+
+/** Approves every request shown at once (Organiser Pro); each is checked like a single one. */
+function ApproveAll({ tripId, requests }: { tripId: string; requests: JoinRequest[] }) {
+  const queryClient = useQueryClient();
+  const bulk = useMutation({
+    mutationFn: () =>
+      bulkJoinRequests(tripId, {
+        action: 'approve',
+        requestIds: requests.slice(0, 50).map((r) => r.id),
+      }),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['join-requests', tripId] });
+      void queryClient.invalidateQueries({ queryKey: ['trip', tripId] });
+    },
+  });
+  const tier = upgradeTier(bulk.error);
+  return (
+    <>
+      <Button
+        title={`Approve all ${Math.min(requests.length, 50)}`}
+        variant="secondary"
+        loading={bulk.isPending}
+        onPress={() => bulk.mutate()}
+      />
+      {tier ? <UpgradePrompt tier={tier} what="Approving many at once" /> : null}
+      {bulk.data ? (
+        <FormMessage tone="info">
+          Approved {bulk.data.done.length}.
+          {bulk.data.failed.length > 0
+            ? ` Not approved: ${bulk.data.failed.length} (${bulk.data.failed[0]!.reason}).`
+            : ''}
+        </FormMessage>
+      ) : null}
+    </>
   );
 }
 

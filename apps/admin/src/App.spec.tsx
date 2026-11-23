@@ -76,7 +76,7 @@ describe('App', () => {
       within(nav)
         .getAllByRole('link')
         .map((link) => link.textContent),
-    ).toEqual(['Overview', 'Reports', 'Members', 'Trips', 'Payments']);
+    ).toEqual(['Overview', 'Reports', 'Members', 'Trips', 'Payments', 'Subscriptions']);
     expect(screen.getByRole('heading', { name: 'Overview' })).toBeInTheDocument();
   });
 
@@ -258,5 +258,91 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
     expect(await screen.findByText('Processed')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+  });
+
+  it('lets operations end a subscription now and refund the last payment', async () => {
+    const SUB_ID = '66666666-6666-4666-8666-666666666666';
+    const PAY_ID = '77777777-7777-4777-8777-777777777777';
+    const sub = (ended: boolean) => ({
+      status: 200,
+      body: {
+        data: {
+          id: SUB_ID,
+          status: ended ? 'CANCELLED' : 'ACTIVE',
+          plan: { code: 'ORGANISER_PRO_MONTHLY', tier: 'ORGANISER_PRO', name: 'Organiser Pro' },
+          pricePaise: 69_900,
+          currency: 'INR',
+          currentPeriodStart: '2026-11-20T00:00:00.000Z',
+          currentPeriodEnd: ended ? '2026-11-23T00:00:00.000Z' : '2026-12-20T00:00:00.000Z',
+          cancelAtPeriodEnd: ended,
+          cancelledAt: ended ? '2026-11-23T00:00:00.000Z' : null,
+          renewsAt: ended ? null : '2026-12-20T00:00:00.000Z',
+          entitled: !ended,
+          payments: [
+            {
+              id: PAY_ID,
+              amountPaise: 69_900,
+              refundedAmountPaise: ended ? 69_900 : 0,
+              currency: 'INR',
+              status: ended ? 'REFUNDED' : 'CAPTURED',
+              failureReason: null,
+              createdAt: '2026-11-20T00:00:00.000Z',
+              capturedAt: '2026-11-20T00:00:00.000Z',
+            },
+          ],
+          createdAt: '2026-11-20T00:00:00.000Z',
+          user: { id: STAFF_ID, username: 'meera', displayName: 'Meera' },
+          provider: 'razorpay',
+          providerSubscriptionId: 'sub_1',
+          cancellationReason: ended ? 'Ended by support: Charged by mistake' : null,
+          actions: ended ? ['reconcile'] : ['reconcile', 'cancel_now', 'refund_last'],
+        },
+      },
+    });
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      fakeFetch(
+        {
+          'POST /auth/login': { status: 200, body: tokens(1) },
+          'GET /admin/me': {
+            status: 200,
+            body: {
+              data: {
+                id: STAFF_ID,
+                username: 'oli',
+                displayName: 'Oli',
+                role: 'OPERATIONS',
+                permissions: PERMISSIONS_BY_ROLE.OPERATIONS,
+              },
+            },
+          },
+          [`GET /admin/subscriptions/${SUB_ID}`]: sub(false),
+          [`POST /admin/subscriptions/${SUB_ID}/end`]: sub(true),
+        },
+        calls,
+      ),
+    );
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={[`/subscriptions/${SUB_ID}`]}>
+          <App />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    fireEvent.change(await screen.findByLabelText('Email'), {
+      target: { value: 'staff@example.com' },
+    });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'End now and refund ₹699' }));
+    fireEvent.change(screen.getByPlaceholderText('Reason (saved in the audit log)'), {
+      target: { value: 'Charged by mistake' },
+    });
+    fireEvent.submit(screen.getByPlaceholderText('Reason (saved in the audit log)'));
+    expect(await screen.findByText('Paid features off')).toBeInTheDocument();
+    expect(calls).toContain(`POST /admin/subscriptions/${SUB_ID}/end`);
+    expect(screen.queryByRole('button', { name: 'End now' })).not.toBeInTheDocument();
   });
 });

@@ -1,9 +1,12 @@
-import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { type TripCard } from '@voyago/shared';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { type DiscoverySearchQuery, type TripCard } from '@voyago/shared';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useMemo, useState } from 'react';
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { popularDestinations, searchTrips, trendingTrips } from '../../src/api/discovery';
+import { createSavedSearch } from '../../src/api/subscriptions';
+import { upgradeTier, suggestName, toSavedQuery } from '../../src/subscriptions/plans';
+import { UpgradePrompt } from '../../src/components/UpgradePrompt';
 import { Choice } from '../../src/components/Choice';
 import { CommunityExplorer } from '../../src/components/CommunityExplorer';
 import { FilterSheet } from '../../src/components/FilterSheet';
@@ -195,6 +198,7 @@ function TripExplorer({ mode }: { mode: 'RIDE' | 'TRAVEL' }) {
           onPress={() => void results.fetchNextPage()}
         />
       ) : null}
+      {!browsing ? <SaveSearch query={query} /> : null}
       {!browsing && trips.length > 0 ? (
         <Button title="Clear search and filters" variant="link" onPress={clearAll} />
       ) : null}
@@ -335,3 +339,60 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
 });
+
+/** Saves the current search (Explorer Pro), optionally with new-trip alerts. */
+function SaveSearch({ query }: { query: DiscoverySearchQuery }) {
+  const queryClient = useQueryClient();
+  const saved = toSavedQuery(query);
+  const [name, setName] = useState('');
+  const [open, setOpen] = useState(false);
+  const save = useMutation({
+    mutationFn: (alerts: boolean) =>
+      createSavedSearch({ name: name.trim() || suggestName(saved), query: saved, alerts }),
+    onSuccess: () => {
+      setOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ['saved-searches'] });
+    },
+  });
+  const tier = upgradeTier(save.error);
+  if (save.isSuccess && !open) {
+    return (
+      <>
+        <FormMessage tone="info">Saved. Find it under Profile, Saved searches.</FormMessage>
+        <Button
+          title="See saved searches"
+          variant="link"
+          onPress={() => router.push('/plans/saved-searches')}
+        />
+      </>
+    );
+  }
+  if (!open) {
+    return <Button title="Save this search" variant="secondary" onPress={() => setOpen(true)} />;
+  }
+  return (
+    <>
+      <TextField
+        label="Name"
+        value={name}
+        onChangeText={setName}
+        placeholder={suggestName(saved)}
+        maxLength={60}
+        hint="Your location and dates aren't saved with it."
+      />
+      {tier ? <UpgradePrompt tier={tier} what="Saving searches" /> : null}
+      {save.error && !tier ? (
+        <FormMessage tone="error">
+          {save.error instanceof Error ? save.error.message : 'Could not save.'}
+        </FormMessage>
+      ) : null}
+      <Button
+        title="Save with new-trip alerts"
+        loading={save.isPending}
+        onPress={() => save.mutate(true)}
+      />
+      <Button title="Save without alerts" variant="secondary" onPress={() => save.mutate(false)} />
+      <Button title="Not now" variant="link" onPress={() => setOpen(false)} />
+    </>
+  );
+}

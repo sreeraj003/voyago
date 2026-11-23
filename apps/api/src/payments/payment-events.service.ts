@@ -6,22 +6,31 @@ import {
   fromRazorpayPayment,
   fromRazorpayRefund,
   type GatewayPayment,
+  type RazorpaySubscriptionEntity,
   PaymentGateway,
 } from './payment-gateway.js';
 import { PaymentsService } from './payments.service.js';
 
-type RazorpayWebhook = {
+export type RazorpayWebhook = {
   event?: string;
   payload?: {
     payment?: { entity?: Parameters<typeof fromRazorpayPayment>[0] };
     refund?: { entity?: Parameters<typeof fromRazorpayRefund>[0] };
+    subscription?: { entity?: RazorpaySubscriptionEntity };
   };
 };
+
+/** Applies one kind of provider event; returns what it did and the subscription it touched. */
+export type EventHandler = (
+  eventType: string,
+  body: RazorpayWebhook,
+) => Promise<{ result: string; subscriptionId: string | null }>;
 
 /** Only what is needed to audit a provider event: ids, status, amounts, error codes. */
 function summarise(body: RazorpayWebhook): Prisma.InputJsonValue {
   const p = body.payload?.payment?.entity;
   const r = body.payload?.refund?.entity;
+  const sub = body.payload?.subscription?.entity;
   return {
     ...(p
       ? {
@@ -39,6 +48,7 @@ function summarise(body: RazorpayWebhook): Prisma.InputJsonValue {
     ...(r
       ? { refund: { id: r.id, paymentId: r.payment_id, status: r.status, amount: r.amount } }
       : {}),
+    ...(sub ? { subscription: { id: sub.id, planId: sub.plan_id, status: sub.status } } : {}),
   };
 }
 
@@ -50,6 +60,12 @@ function summarise(body: RazorpayWebhook): Prisma.InputJsonValue {
 @Injectable()
 export class PaymentEventsService {
   private readonly logger = new Logger(PaymentEventsService.name);
+  private subscriptionHandler: EventHandler | null = null;
+
+  /** Subscriptions register here, so this module needn't depend on them. */
+  onSubscriptionEvent(handler: EventHandler) {
+    this.subscriptionHandler = handler;
+  }
 
   constructor(
     private readonly prisma: PrismaService,
@@ -93,20 +109,32 @@ export class PaymentEventsService {
     ).slice(0, 120);
     const recorded = await this.record(id, eventType, body);
     if (recorded === 'duplicate') return { status: 'duplicate' };
-    const result = await this.apply(eventType, body);
+    let result: string;
+    let subscriptionId: string | null = null;
+    if (eventType.startsWith('subscription.') && this.subscriptionHandler) {
+      ({ result, subscriptionId } = await this.subscriptionHandler(eventType, body));
+    } else {
+      result = await this.apply(eventType, body);
+    }
     await this.prisma.paymentEvent.update({
       where: { provider_eventId: { provider: this.gateway.name, eventId: id } },
       data: {
         result: result.slice(0, 300),
         processedAt: new Date(),
-        bookingId: await this.bookingFor(body),
+        bookingId: subscriptionId ? null : await this.bookingFor(body),
+        subscriptionId,
       },
     });
     return { status: result === 'ignored' ? 'ignored' : 'processed', result };
   }
 
   /** Records the checkout's return (signature already verified) for the booking's history. */
-  async recordCheckout(bookingId: string, paymentId: string, result: string) {
+  async recordCheckout(
+    bookingId: string | null,
+    paymentId: string,
+    result: string,
+    subscriptionId: string | null = null,
+  ) {
     await this.prisma.paymentEvent
       .create({
         data: {
@@ -114,6 +142,7 @@ export class PaymentEventsService {
           eventId: `checkout:${paymentId}`.slice(0, 120),
           eventType: 'checkout.return',
           bookingId,
+          subscriptionId,
           signatureValid: true,
           summary: { payment: { id: paymentId } },
           result: result.slice(0, 300),

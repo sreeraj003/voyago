@@ -17,6 +17,11 @@ import {
   AdminUserDetailSchema,
   AdminUserPageSchema,
   type AdminUsersQuery,
+  type AdminEndSubscriptionInput,
+  AdminPlanSchema,
+  AdminSubscriptionPageSchema,
+  AdminSubscriptionSchema,
+  type AdminSubscriptionsQuery,
   AuditPageSchema,
   type AuditQuery,
   DashboardSchema,
@@ -28,6 +33,7 @@ import {
   type SetRoleInput,
   StaffPersonSchema,
   type TriageReportInput,
+  type UpdatePlanInput,
 } from '@voyago/shared';
 import { z } from 'zod';
 import { api } from './api';
@@ -115,4 +121,27 @@ export const adminApi = {
     post(`/admin/bookings/${id}/refund`, input, AdminBookingDetailSchema),
   retryRefund: (refundId: string) =>
     post(`/admin/refunds/${refundId}/retry`, {}, AdminBookingDetailSchema),
+
+  plans: () => api('/admin/subscription-plans', { schema: z.array(AdminPlanSchema) }),
+  updatePlan: (id: string, input: UpdatePlanInput) =>
+    api(`/admin/subscription-plans/${id}`, {
+      method: 'PATCH',
+      body: input,
+      schema: AdminPlanSchema,
+    }),
+  subscriptions: (query: AdminSubscriptionsQuery) =>
+    api(`/admin/subscriptions${qs(query)}`, {
+      schema: AdminSubscriptionPageSchema,
+      envelope: 'whole',
+    }),
+  subscription: (id: string) =>
+    api(`/admin/subscriptions/${id}`, { schema: AdminSubscriptionSchema }),
+  reconcileSubscription: (id: string) =>
+    post(
+      `/admin/subscriptions/${id}/reconcile`,
+      {},
+      z.object({ result: z.string(), subscription: AdminSubscriptionSchema }),
+    ),
+  endSubscription: (id: string, input: AdminEndSubscriptionInput) =>
+    post(`/admin/subscriptions/${id}/end`, input, AdminSubscriptionSchema),
 };

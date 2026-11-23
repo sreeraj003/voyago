@@ -25,6 +25,7 @@ import { NotificationsModule } from './notifications/notifications.module.js';
 import { ParticipationModule } from './participation/participation.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
 import { PostsModule } from './posts/posts.module.js';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module.js';
 import { TripsModule } from './trips/trips.module.js';
 import { UsersModule } from './users/users.module.js';
 
@@ -102,6 +103,7 @@ export class AppModule {
         ChatModule,
         SafetyModule,
         PaymentsModule,
+        SubscriptionsModule,
         CommercialModule,
         ...extraModules,
       ],

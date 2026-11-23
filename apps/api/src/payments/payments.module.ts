@@ -34,6 +34,6 @@ import { WebhooksController } from './webhooks.controller.js';
     ReconciliationService,
     AdminBookingsService,
   ],
-  exports: [PaymentGateway, PaymentsService, BookingsService],
+  exports: [PaymentGateway, PaymentsService, BookingsService, CheckoutTokens, PaymentEventsService],
 })
 export class PaymentsModule {}

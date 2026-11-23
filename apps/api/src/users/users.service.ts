@@ -11,6 +11,7 @@ import {
   type Preferences,
   type PrivateProfile,
   type PublicProfile,
+  tierHas,
   type UpdatePreferencesSchema,
   type UpdateProfileSchema,
   type UpdateMotorcycleSchema,
@@ -18,6 +19,7 @@ import {
 import { type z } from 'zod';
 import { directMessageAllowed } from '../chat/message-permission.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { EntitlementsService } from '../subscriptions/entitlements.service.js';
 
 const motorcycleSelect = {
   id: true,
@@ -58,7 +60,10 @@ const preferenceSelect = {
  */
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly entitlements: EntitlementsService,
+  ) {}
 
   async getOwnProfile(userId: string): Promise<PrivateProfile> {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
@@ -124,7 +129,7 @@ export class UsersService {
       if (block) throw notFound;
     }
 
-    const [followerCount, followingCount, links] = await Promise.all([
+    const [followerCount, followingCount, links, tier] = await Promise.all([
       this.prisma.follow.count({ where: { followeeId: user.id } }),
       this.prisma.follow.count({ where: { followerId: user.id } }),
       isSelf
@@ -138,6 +143,9 @@ export class UsersService {
             },
             select: { followerId: true },
           }),
+      user.accentColor || user.profileHeadline
+        ? this.entitlements.tierOf(user.id)
+        : Promise.resolve('FREE' as const),
     ]);
     const isFollowing = links.some((link) => link.followerId === viewerId);
     const visibility = user.preferences?.profileVisibility ?? 'PUBLIC';
@@ -161,6 +169,13 @@ export class UsersService {
       memberSince: user.createdAt.toISOString(),
       follow,
       canMessage: isSelf ? false : await directMessageAllowed(this.prisma, viewerId, user.id),
+      // Kept when a plan ends, shown again if the member subscribes again.
+      style: {
+        accentColor: tierHas(tier, 'profile_style')
+          ? (user.accentColor as PublicProfile['style']['accentColor'])
+          : null,
+        headline: tierHas(tier, 'organiser_profile') ? user.profileHeadline : null,
+      },
     };
     if (!full) {
       return {

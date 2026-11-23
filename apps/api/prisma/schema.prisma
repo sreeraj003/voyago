@@ -393,11 +393,18 @@ enum BillingInterval {
 }
 
 enum SubscriptionStatus {
+  /// Created at the provider; waiting for the first payment.
+  PENDING
   TRIALING
   ACTIVE
   PAST_DUE
   CANCELLED
   EXPIRED
+}
+
+enum SubscriptionTier {
+  EXPLORER_PRO
+  ORGANISER_PRO
 }
 
 enum LocationSessionStatus {
@@ -458,6 +465,10 @@ model User {
   updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
   /// Soft delete; personal fields are scrubbed by the account-deletion job.
   deletedAt       DateTime?  @map("deleted_at") @db.Timestamptz(3)
+  /// Profile accent colour (a paid feature; hidden while the plan is not active).
+  accentColor     String?    @map("accent_color") @db.VarChar(20)
+  /// Organiser headline (Organiser Pro; hidden while the plan is not active).
+  profileHeadline String?    @map("profile_headline") @db.VarChar(120)
 
   preferences         UserPreference?
   motorcycles         Motorcycle[]
@@ -491,6 +502,7 @@ model User {
   bookings            Booking[]
   payments            Payment[]
   subscriptions       Subscription[]
+  savedSearches       SavedSearch[]
   locationSessions    LocationSession[]
   emergencyContacts   EmergencyContact[]
   tripCheckIns        TripCheckIn[]
@@ -1390,19 +1402,24 @@ model Payment {
 }
 
 model SubscriptionPlan {
-  id              String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                     String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// Stable identifier, e.g. EXPLORER_PRO_MONTHLY.
-  code            String          @unique @db.VarChar(60)
-  name            String          @db.VarChar(80)
-  description     String?         @db.VarChar(1000)
-  pricePaise      Int             @map("price_paise")
-  currency        String          @default("INR") @db.Char(3)
-  billingInterval BillingInterval @map("billing_interval")
-  /// Feature flags unlocked by the plan. Safety features are never gated.
-  features        Json            @default("{}")
-  isActive        Boolean         @default(true) @map("is_active")
-  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  code                   String           @unique @db.VarChar(60)
+  name                   String           @db.VarChar(80)
+  description            String?          @db.VarChar(1000)
+  pricePaise             Int              @map("price_paise")
+  currency               String           @default("INR") @db.Char(3)
+  billingInterval        BillingInterval  @map("billing_interval")
+  /// Which entitlements the plan grants (the list itself lives in code, per tier).
+  tier                   SubscriptionTier
+  /// Legacy feature notes; entitlements come from the tier.
+  features               Json             @default("{}")
+  isActive               Boolean          @default(true) @map("is_active")
+  /// The provider's plan for the current price; a new one is made when the price changes.
+  providerPlanId         String?          @map("provider_plan_id") @db.VarChar(100)
+  providerPlanPricePaise Int?             @map("provider_plan_price_paise")
+  createdAt              DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   subscriptions Subscription[]
 
@@ -1413,21 +1430,35 @@ model Subscription {
   id                     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId                 String             @map("user_id") @db.Uuid
   planId                 String             @map("plan_id") @db.Uuid
-  status                 SubscriptionStatus @default(ACTIVE)
-  currentPeriodStart     DateTime           @map("current_period_start") @db.Timestamptz(3)
-  currentPeriodEnd       DateTime           @map("current_period_end") @db.Timestamptz(3)
+  status                 SubscriptionStatus @default(PENDING)
+  /// Set once paid; the paid features work until the end (see RENEWAL_GRACE_HOURS).
+  currentPeriodStart     DateTime?          @map("current_period_start") @db.Timestamptz(3)
+  currentPeriodEnd       DateTime?          @map("current_period_end") @db.Timestamptz(3)
   cancelAtPeriodEnd      Boolean            @default(false) @map("cancel_at_period_end")
   cancelledAt            DateTime?          @map("cancelled_at") @db.Timestamptz(3)
+  cancellationReason     String?            @map("cancellation_reason") @db.VarChar(500)
+  endedAt                DateTime?          @map("ended_at") @db.Timestamptz(3)
+  /// The price agreed when subscribing; plan price changes never touch it.
+  pricePaise             Int                @map("price_paise")
+  currency               String             @default("INR") @db.Char(3)
+  /// Client key per subscribe attempt: retries return the same subscription.
+  idempotencyKey         String             @map("idempotency_key") @db.VarChar(100)
+  /// The period end we last sent a renewal reminder for.
+  remindedForPeriodEnd   DateTime?          @map("reminded_for_period_end") @db.Timestamptz(3)
   provider               String?            @db.VarChar(40)
   providerSubscriptionId String?            @map("provider_subscription_id") @db.VarChar(100)
+  /// The provider's own status word, for support.
+  providerStatus         String?            @map("provider_status") @db.VarChar(30)
   createdAt              DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt              DateTime           @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user     User             @relation(fields: [userId], references: [id], onDelete: Restrict)
   plan     SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
   payments Payment[]
+  events   PaymentEvent[]
 
   @@unique([provider, providerSubscriptionId])
+  @@unique([userId, idempotencyKey])
   @@index([userId, status])
   @@index([status, currentPeriodEnd])
   @@map("subscriptions")
@@ -1532,10 +1563,33 @@ model PaymentEvent {
   receivedAt     DateTime  @default(now()) @map("received_at") @db.Timestamptz(3)
   processedAt    DateTime? @map("processed_at") @db.Timestamptz(3)
 
-  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  booking        Booking?      @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  subscriptionId String?       @map("subscription_id") @db.Uuid
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
 
   @@unique([provider, eventId])
+  @@index([subscriptionId])
   @@index([bookingId])
   @@index([receivedAt])
   @@map("payment_events")
+}
+
+/// A discovery search a member saved (Explorer Pro), optionally with new-trip alerts.
+model SavedSearch {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  name          String    @db.VarChar(60)
+  /// Discovery query values as sent by the app; re-checked every time it runs.
+  query         Json
+  alerts        Boolean   @default(false)
+  /// Trips published after this are new for alerts.
+  lastAlertedAt DateTime? @map("last_alerted_at") @db.Timestamptz(3)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@index([alerts])
+  @@map("saved_searches")
 }

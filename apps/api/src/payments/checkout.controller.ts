@@ -18,12 +18,12 @@ type LinkQuery = { e?: string; r?: string; s?: string };
 /** What the provider's checkout posts back. Field names are Razorpay's. */
 type CallbackBody = Record<string, string | undefined>;
 
-function escapeHtml(value: string): string {
+export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
 
 /** A small, self-contained page; nothing on it comes from another origin except the provider. */
-function page(title: string, body: string, nonce: string, script = ''): string {
+export function page(title: string, body: string, nonce: string, script = ''): string {
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -34,6 +34,7 @@ body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;pad
 main{max-width:420px;margin:0 auto;background:#fff;border-radius:12px;padding:24px;box-shadow:0 1px 3px rgba(0,0,0,.08)}
 h1{font-size:20px;margin:0 0 8px}p{line-height:1.5;margin:8px 0}.total{font-size:28px;font-weight:700;margin:16px 0}
 .muted{color:#5b6470;font-size:14px}button,a.button{display:block;width:100%;box-sizing:border-box;text-align:center;padding:14px;border:0;border-radius:8px;background:#0b6e4f;color:#fff;font-size:16px;font-weight:600;text-decoration:none;cursor:pointer;margin-top:16px}
+a.button.secondary{background:transparent;color:inherit;border:1px solid #c5cbd3}
 @media (prefers-color-scheme:dark){body{background:#111417;color:#e8eaed}main{background:#1b1f24;box-shadow:none}.muted{color:#a0a8b2}}
 </style></head><body><main>${body}</main>${script}</body></html>`;
 }
@@ -275,24 +276,28 @@ b.addEventListener('click',function(){rz.open();});rz.open();})();
   }
 
   private send(res: Response, status: number, nonce: string, html: string) {
-    // Replaces the API's default policy for this page only: the provider's checkout needs its
-    // script, frames and API, and nothing else is allowed.
-    res.setHeader(
-      'Content-Security-Policy',
-      [
-        "default-src 'none'",
-        `script-src 'nonce-${nonce}' https://checkout.razorpay.com`,
-        "style-src 'unsafe-inline'",
-        'img-src https: data:',
-        'frame-src https://api.razorpay.com https://checkout.razorpay.com',
-        'connect-src https://api.razorpay.com https://lumberjack.razorpay.com',
-        "form-action 'self' https://api.razorpay.com",
-        "base-uri 'none'",
-        "frame-ancestors 'none'",
-      ].join('; '),
-    );
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Referrer-Policy', 'no-referrer');
-    res.status(status).type('html').send(html);
+    sendCheckoutPage(res, status, nonce, html);
   }
+}
+
+export function sendCheckoutPage(res: Response, status: number, nonce: string, html: string) {
+  // Replaces the API's default policy for this page only: the provider's checkout needs its
+  // script, frames and API, and nothing else is allowed.
+  res.setHeader(
+    'Content-Security-Policy',
+    [
+      "default-src 'none'",
+      `script-src 'nonce-${nonce}' https://checkout.razorpay.com`,
+      "style-src 'unsafe-inline'",
+      'img-src https: data:',
+      'frame-src https://api.razorpay.com https://checkout.razorpay.com',
+      'connect-src https://api.razorpay.com https://lumberjack.razorpay.com',
+      "form-action 'self' https://api.razorpay.com",
+      "base-uri 'none'",
+      "frame-ancestors 'none'",
+    ].join('; '),
+  );
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.status(status).type('html').send(html);
 }

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { DisplayNameSchema, UsernameSchema } from './auth.js';
 import { FollowStateSchema } from './social.js';
 import { TripModeSchema } from './trip-mode.js';
+import { ProfileStyleSchema } from './subscriptions.js';
 
 /**
  * Profile, preference and motorcycle contracts.
@@ -127,6 +128,8 @@ export const PublicProfileSchema = z.object({
   follow: FollowStateSchema,
   /** Whether you may send this member a direct message (their message setting and blocks). */
   canMessage: z.boolean(),
+  /** Accent colour and headline: shown only while the member's plan includes them. */
+  style: ProfileStyleSchema,
 });
 export type PublicProfile = z.infer<typeof PublicProfileSchema>;
 
